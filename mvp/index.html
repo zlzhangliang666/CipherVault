@@ -427,6 +427,8 @@ textarea.finput{min-height:70px;resize:vertical;line-height:1.7}
            载荷使用同一套 PBKDF2 + HMAC-SHA256 流加密 + HMAC 校验，
            因此两种钥匙卡可互相验证、均可脱离本项目独立运行。
    ============================================================ */
+/* 说明：钥匙卡载荷用「主密码」派生密钥来加密「条目密码」的明文；
+   因此解锁期间需要暂存主密码（MASTER），一旦锁定立即清除。 */
 const enc = new TextEncoder(), dec = new TextDecoder();
 const bytesToB64 = b => { let s=''; b.forEach(x=>s+=String.fromCharCode(x)); return btoa(s); };
 const b64ToBytes = s => { const t=atob(s), a=new Uint8Array(t.length); for(let i=0;i<t.length;i++)a[i]=t.charCodeAt(i); return a; };
@@ -458,13 +460,13 @@ async function pbkdf2Bits(password, saltBytes, iters, bits){
   return new Uint8Array(out);
 }
 async function hmacSignKey(rawKey){ return crypto.subtle.importKey('raw', rawKey, {name:'HMAC',hash:'SHA-256'}, false, ['sign']); }
-async function kcEncrypt(password){
+async function kcEncrypt(masterPw, entryPw){
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const iv   = crypto.getRandomValues(new Uint8Array(16));
-  const dk   = await pbkdf2Bits(password, salt, ITERS, 512);      // 64 bytes
+  const dk   = await pbkdf2Bits(masterPw, salt, ITERS, 512);       // 密钥来自「主密码」
   const encKey = await hmacSignKey(dk.slice(0,32));
   const macKey = await hmacSignKey(dk.slice(32,64));
-  const pt = enc.encode(password);
+  const pt = enc.encode(entryPw);                                  // 明文是「条目密码」
   let ks = new Uint8Array(0), counter = 0;
   while(ks.length < pt.length){
     const blk = new Uint8Array(20); blk.set(iv,0); new DataView(blk.buffer).setUint32(16, counter, false);
@@ -518,6 +520,7 @@ function genPassword(len, o){
 /* ---------- 状态 ---------- */
 const STORE='cv_store';
 let KEY=null, SALT=null, ITERS=200000, VAULT=null, SEL=null, NAV={type:'all',cat:null}, Q='', SORT='recent', lastAct=Date.now();
+let MASTER=null;   // 解锁期间暂存的主密码（仅用于生成钥匙卡载荷），锁定时清除
 
 const AV_COLORS=['#3b82f6','#0ea5a4','#7c6cf0','#e8628c','#e0912b','#3aa76d','#ef7a4d','#4a9fe0'];
 const hashColor = s => AV_COLORS[Math.abs([...String(s)].reduce((a,c)=>a+c.charCodeAt(0),0))%AV_COLORS.length];
@@ -557,14 +560,14 @@ async function doCreate(){
   if(a.length<8){setMsg('主密码至少 8 位，建议用一句长句子');return;}
   if(a!==b){setMsg('两次输入不一致，请再确认一下');return;}
   SALT=bytesToB64(crypto.getRandomValues(new Uint8Array(16))); ITERS=200000;
-  KEY=await deriveKey(a,SALT,ITERS);
+  KEY=await deriveKey(a,SALT,ITERS); MASTER=a;
   VAULT={entries:[],categories:[],settings:{autoLockMin:5,clipboardClearSec:30}};
   await saveVault(); enterApp(); toast('保险箱已创建，开始存放密码吧','ok');
 }
 async function doUnlock(){
   const pw=document.getElementById('pwInput').value, st=readStore(); if(!st)return;
   try{
-    KEY=await deriveKey(pw,st.salt,st.iters); SALT=st.salt; ITERS=st.iters;
+    KEY=await deriveKey(pw,st.salt,st.iters); SALT=st.salt; ITERS=st.iters; MASTER=pw;
     VAULT=JSON.parse(dec.decode(await decBytes(KEY,st.iv,st.ct)));
     VAULT.categories=VAULT.categories||[]; VAULT.settings=VAULT.settings||{autoLockMin:5,clipboardClearSec:30};
     enterApp();
@@ -578,7 +581,7 @@ function enterApp(){
   renderNav(); renderList(); closeDrawer();
 }
 function doLock(){
-  KEY=null; VAULT=null; SEL=null; closeDrawer();
+  KEY=null; VAULT=null; SEL=null; MASTER=null; closeDrawer();
   document.getElementById('app').classList.add('hidden');
   document.getElementById('lock').classList.remove('hidden');
   document.getElementById('pwInput').value=''; boot();
@@ -676,7 +679,7 @@ function renderDrawer(){
 
   const body=document.getElementById('dbody');
   if(tab==='detail'){ body.innerHTML = detailHTML(e); bindDetail(e); }
-  else { body.innerHTML = cipherHTML(e); bindCipher(e); }
+  else { body.innerHTML = cipherHTML(e); if(e.password) bindCipher(e); }
   openDrawer();
 }
 function detailHTML(e){
@@ -751,7 +754,7 @@ function bindCipher(e){
 async function makeCipher(e){
   const out=document.getElementById('cipherOut'); if(!out) return;
   out.textContent='…'; const chk=document.getElementById('selfCheck');
-  const kc = await kcEncrypt(e.password);            // 钥匙卡载荷（跨语言）
+  const kc = await kcEncrypt(MASTER, e.password);     // 主密码派生密钥，加密条目密码
   const token = kc.ctHex;
   const display = encodeToken(token, e.skin.rules);
   out.innerHTML = esc(display).split(SEP).join('<span class="sep">'+SEP+'</span>');
@@ -836,7 +839,9 @@ const KC_JS=[
 'function concat(a,b){var o=new Uint8Array(a.length+b.length);o.set(a,0);o.set(b,a.length);return o;}',
 'function decodeToken(display){var segs=display.split(SEP),hex="";for(var i=0;i<segs.length;i++){var r=rules[i%rules.length],v=-1;if(r==="letter")v=segs[i].charCodeAt(0)-65;else if(r==="number")v=parseInt(segs[i],10)-10;else v=POEMS.indexOf(segs[i]);if(v<0||v>15)throw new Error("第 "+(i+1)+" 段无法还原");hex+=v.toString(16);}return hex;}',
 'async function derive(pw){var base=await crypto.subtle.importKey("raw",new TextEncoder().encode(pw),"PBKDF2",false,["deriveBits"]);var bits=await crypto.subtle.deriveBits({name:"PBKDF2",salt:hexToBytes(D.saltHex),iterations:D.iters,hash:"SHA-256"},base,512);return new Uint8Array(bits);}',
-'async function run(){var out=document.getElementById("out");out.className="out";out.textContent="还原中…";',
+'async function run(){var out=document.getElementById("out");out.className="out";',
+'if(!(window.crypto&&crypto.subtle)){out.className="out err";out.textContent="当前环境不支持 Web Crypto：请用 Chrome / Edge / Firefox 打开本文件，或把本文件放到本地 http 服务下再访问。";return;}',
+'out.textContent="还原中…";',
 'try{var dk=await derive(document.getElementById("pw").value);',
 'var encKey=await crypto.subtle.importKey("raw",dk.slice(0,32),{name:"HMAC",hash:"SHA-256"},false,["sign"]);',
 'var macKey=await crypto.subtle.importKey("raw",dk.slice(32,64),{name:"HMAC",hash:"SHA-256"},false,["sign"]);',
@@ -1004,7 +1009,7 @@ async function applyIters(){
   if(!pw){ document.getElementById('setIters').value=String(ITERS); return; }
   try{
     const nk=await deriveKey(pw,SALT,v); await decBytes(nk,readStore().iv,readStore().ct);
-    KEY=nk; ITERS=v; await saveVault(); toast('已提升密钥派生强度','ok');
+    KEY=nk; ITERS=v; MASTER=pw; await saveVault(); toast('已提升密钥派生强度','ok');
   }catch(e){ toast('主密码不正确，未修改','err'); document.getElementById('setIters').value=String(ITERS); }
 }
 document.getElementById('setIters').onchange=applyIters;
