@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>密语保险箱 · CipherVault MVP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;600;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#13110f; --ink-2:#1b1815; --ink-3:#242019;
+  --paper:#ece5d6; --paper-dim:#b9b0a0; --muted:#8b8175;
+  --cinnabar:#c33a2e; --cinnabar-soft:#e0685b;
+  --gold:#c9a24a; --gold-soft:#e2c684; --jade:#5f9078;
+  --line:rgba(201,162,74,.22);
+  --shadow:0 24px 60px -30px rgba(0,0,0,.9);
+  --r:14px;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  background:
+    radial-gradient(1200px 700px at 78% -10%, rgba(201,162,74,.10), transparent 60%),
+    radial-gradient(900px 600px at 6% 110%, rgba(195,58,46,.10), transparent 55%),
+    linear-gradient(160deg,#161310,#0d0b09 60%,#100d0a);
+  color:var(--paper);
+  font-family:"Noto Serif SC",Songti SC,SimSun,serif;
+  min-height:100%;
+  overflow-x:hidden;
+}
+.grain{
+  position:fixed;inset:0;pointer-events:none;z-index:9;opacity:.05;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.hidden{display:none !important}
+button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit}
+input{font-family:inherit}
+.mono{font-family:"JetBrains Mono",ui-monospace,Consolas,monospace}
+
+/* ------- 印章 ------- */
+.seal{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:34px;height:34px;border-radius:8px;
+  background:linear-gradient(145deg,#d0432f,#a52a20);
+  color:#fbe9e3;font-family:"Ma Shan Zheng",serif;font-size:20px;line-height:1;
+  box-shadow:inset 0 0 0 1px rgba(255,220,200,.35), 0 6px 16px -8px rgba(195,58,46,.9);
+}
+.seal.big{width:74px;height:74px;font-size:44px;border-radius:14px}
+
+/* ------- 锁屏 ------- */
+.screen{min-height:100vh}
+#lockScreen{display:grid;place-items:center;padding:40px 20px}
+.lockbox{
+  width:min(440px,92vw);text-align:center;
+  padding:44px 34px 30px;border-radius:var(--r);
+  background:linear-gradient(180deg,rgba(36,32,25,.72),rgba(20,17,14,.85));
+  border:1px solid var(--line);box-shadow:var(--shadow);position:relative;
+  animation:rise .7s cubic-bezier(.2,.7,.2,1) both;
+}
+.lockbox::before,.lockbox::after{
+  content:"";position:absolute;width:22px;height:22px;border:1px solid var(--gold);opacity:.5;
+}
+.lockbox::before{top:10px;left:10px;border-right:0;border-bottom:0}
+.lockbox::after{bottom:10px;right:10px;border-left:0;border-top:0}
+.title{
+  font-family:"Ma Shan Zheng",serif;font-weight:400;font-size:40px;margin:18px 0 4px;letter-spacing:.08em;
+  background:linear-gradient(180deg,#f2e7cf,#c8a24c);-webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.subtitle{color:var(--muted);letter-spacing:.34em;font-size:12px;margin:0 0 26px}
+.lockbox input{
+  width:100%;padding:13px 15px;margin-bottom:11px;border-radius:10px;
+  background:rgba(0,0,0,.32);border:1px solid var(--line);color:var(--paper);font-size:15px;letter-spacing:.06em;
+}
+.lockbox input:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px rgba(201,162,74,.14)}
+.primary{
+  width:100%;padding:13px;border-radius:10px;font-size:15px;letter-spacing:.22em;
+  background:linear-gradient(180deg,var(--cinnabar-soft),var(--cinnabar));color:#fff3ef;
+  box-shadow:0 14px 30px -16px rgba(195,58,46,.95);transition:transform .15s,filter .15s;
+}
+.primary:hover{transform:translateY(-1px);filter:brightness(1.06)}
+.primary:active{transform:translateY(0)}
+.ghost{
+  padding:8px 14px;border-radius:9px;border:1px solid var(--line);color:var(--paper-dim);font-size:13px;
+  transition:.15s;
+}
+.ghost:hover{border-color:var(--gold);color:var(--gold-soft)}
+.ghost.small{font-size:12px;padding:6px 10px;margin-top:12px;border-style:dashed}
+.msg{min-height:18px;font-size:13px;margin:12px 0 0;color:var(--cinnabar-soft)}
+.msg.ok{color:var(--jade)}
+.disclaim{font-size:11.5px;color:var(--muted);line-height:1.9;margin:20px 0 0;border-top:1px dashed var(--line);padding-top:16px}
+
+/* ------- 主界面 ------- */
+#vaultScreen{padding:18px clamp(14px,3vw,34px) 40px}
+#topbar{
+  display:flex;align-items:center;justify-content:space-between;gap:16px;
+  padding:12px 4px 20px;border-bottom:1px solid var(--line);margin-bottom:22px;
+}
+.brand{display:flex;align-items:center;gap:12px}
+.brandtxt{font-size:18px;letter-spacing:.2em;display:flex;flex-direction:column;line-height:1.1}
+.brandtxt em{font-family:"JetBrains Mono",monospace;font-style:normal;font-size:10px;letter-spacing:.36em;color:var(--muted);margin-top:3px}
+.topactions{display:flex;gap:10px}
+
+.layout{display:grid;grid-template-columns:330px 1fr;gap:22px;align-items:start}
+@media (max-width:880px){.layout{grid-template-columns:1fr}}
+
+.sidebar{
+  border:1px solid var(--line);border-radius:var(--r);padding:16px;
+  background:linear-gradient(180deg,rgba(36,32,25,.5),rgba(19,17,15,.5));
+}
+.sidehead{font-size:13px;letter-spacing:.3em;color:var(--gold-soft);margin-bottom:14px;display:flex;justify-content:space-between}
+.sidehead span{color:var(--muted);font-family:"JetBrains Mono",monospace}
+.entries{list-style:none;margin:0 0 14px;padding:0;display:flex;flex-direction:column;gap:8px;max-height:52vh;overflow:auto}
+.entry{
+  width:100%;text-align:left;padding:11px 13px;border-radius:10px;border:1px solid transparent;
+  background:rgba(0,0,0,.22);transition:.16s;display:flex;flex-direction:column;gap:3px;
+}
+.entry:hover{border-color:var(--line);background:rgba(201,162,74,.07)}
+.entry.active{border-color:var(--gold);background:rgba(201,162,74,.12);box-shadow:inset 3px 0 0 var(--cinnabar)}
+.entry .en{font-size:14.5px;letter-spacing:.05em}
+.entry .ea{font-size:11.5px;color:var(--muted);font-family:"JetBrains Mono",monospace}
+.entry .sk{font-size:10.5px;color:var(--gold-soft);letter-spacing:.14em}
+.empty-hint{color:var(--muted);font-size:12.5px;line-height:1.9;text-align:center;padding:20px 6px}
+.block{display:block}
+.tips{margin-top:18px;border-top:1px dashed var(--line);padding-top:14px;font-size:11.5px;color:var(--muted);line-height:1.85}
+.tips strong{color:var(--gold-soft);letter-spacing:.2em;font-size:11px}
+
+.panel{
+  border:1px solid var(--line);border-radius:var(--r);padding:26px 26px 30px;min-height:420px;
+  background:linear-gradient(180deg,rgba(36,32,25,.42),rgba(19,17,15,.55));
+  position:relative;
+}
+.panel .ph{font-family:"Ma Shan Zheng",serif;font-size:26px;color:var(--gold-soft);letter-spacing:.06em;margin:0 0 18px}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:11.5px;letter-spacing:.24em;color:var(--muted);margin-bottom:7px}
+.field input,.field select{
+  width:100%;padding:11px 13px;border-radius:9px;background:rgba(0,0,0,.3);
+  border:1px solid var(--line);color:var(--paper);font-size:14.5px;
+}
+.field input:focus,.field select:focus{outline:none;border-color:var(--gold)}
+.row{display:flex;gap:12px;flex-wrap:wrap}
+.row .field{flex:1;min-width:180px}
+
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{
+  padding:8px 14px;border-radius:99px;border:1px solid var(--line);font-size:12.5px;color:var(--paper-dim);transition:.15s;
+}
+.chip:hover{border-color:var(--gold);color:var(--gold-soft)}
+.chip.on{background:linear-gradient(180deg,var(--cinnabar-soft),var(--cinnabar));color:#fff;border-color:transparent}
+
+.rules{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.rule{display:flex;align-items:center;gap:9px}
+.rule .no{font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--muted);width:26px}
+.rule select{flex:1;padding:8px 10px;border-radius:8px;background:rgba(0,0,0,.3);border:1px solid var(--line);color:var(--paper)}
+.rule .del{padding:6px 10px;border-radius:8px;border:1px solid var(--line);color:var(--muted);font-size:12px}
+.rule .del:hover{color:var(--cinnabar-soft);border-color:var(--cinnabar)}
+
+.cipherbox{
+  margin-top:18px;padding:18px 18px;border-radius:12px;border:1px dashed var(--line);
+  background:rgba(0,0,0,.28);position:relative;
+}
+.cipherbox .clab{font-size:11px;letter-spacing:.28em;color:var(--gold-soft);margin-bottom:10px}
+.cipher{
+  font-family:"JetBrains Mono",ui-monospace,monospace;font-size:15px;line-height:1.95;word-break:break-all;
+  color:#e9dcc0;letter-spacing:.05em;
+}
+.cipher .sep{color:var(--cinnabar-soft)}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+.btn{
+  padding:11px 18px;border-radius:9px;font-size:13.5px;letter-spacing:.1em;
+  border:1px solid var(--line);color:var(--paper-dim);transition:.15s;
+}
+.btn:hover{border-color:var(--gold);color:var(--gold-soft);background:rgba(201,162,74,.06)}
+.btn.key{background:linear-gradient(180deg,var(--gold-soft),var(--gold));color:#241d0c;border-color:transparent;font-weight:600}
+.btn.key:hover{filter:brightness(1.05);color:#241d0c}
+.btn.danger:hover{border-color:var(--cinnabar);color:var(--cinnabar-soft)}
+.status{margin-top:14px;font-size:12.5px;color:var(--jade);letter-spacing:.05em}
+.status.err{color:var(--cinnabar-soft)}
+.selfcheck{font-size:11.5px;color:var(--muted);margin-top:8px;font-family:"JetBrains Mono",monospace}
+
+/* ------- 模态 ------- */
+.modal{position:fixed;inset:0;z-index:20;display:grid;place-items:center;background:rgba(6,5,4,.72);backdrop-filter:blur(3px);padding:20px}
+.modal .box{
+  width:min(560px,92vw);border:1px solid var(--line);border-radius:var(--r);padding:28px 30px 26px;
+  background:linear-gradient(180deg,#241f18,#161310);box-shadow:var(--shadow);
+}
+.modal h2{font-family:"Ma Shan Zheng",serif;font-size:26px;margin:0 0 14px;color:var(--gold-soft);font-weight:400}
+.modal p{font-size:13px;line-height:2;color:var(--paper-dim)}
+.modal code{font-family:"JetBrains Mono",monospace;font-size:12px;background:rgba(0,0,0,.4);padding:2px 6px;border-radius:5px;color:var(--gold-soft)}
+.modal .close{margin-top:18px}
+
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.screen.fade{animation:rise .5s cubic-bezier(.2,.7,.2,1) both}
+::selection{background:rgba(201,162,74,.35)}
+</style>
+</head>
+<body>
+<div class="grain"></div>
+
+<!-- ================= 锁屏 ================= -->
+<main id="lockScreen" class="screen">
+  <div class="lockbox">
+    <div class="seal big">密</div>
+    <h1 class="title">密语保险箱</h1>
+    <p class="subtitle">CIPHERVAULT · 强加密内核 · 趣味皮肤</p>
+
+    <div id="lockCreate" class="hidden">
+      <input id="pwNew" type="password" placeholder="设置主密码" autocomplete="new-password">
+      <input id="pwNew2" type="password" placeholder="确认主密码" autocomplete="new-password">
+      <button id="btnCreate" class="primary">创 建 保 险 箱</button>
+    </div>
+
+    <div id="lockUnlock" class="hidden">
+      <input id="pwInput" type="password" placeholder="输入主密码解锁" autocomplete="current-password">
+      <button id="btnUnlock" class="primary">解 锁</button>
+      <button id="btnReset" class="ghost small">重置保险箱（清空本地数据）</button>
+    </div>
+
+    <p id="lockMsg" class="msg"></p>
+    <p class="disclaim">
+      趣味加密只是“外衣”，真正的安全来自底层 <b>AES-GCM</b>。<br>
+      主密码不经任何服务器、不落盘；忘记将无法找回。
+    </p>
+  </div>
+</main>
+
+<!-- ================= 主界面 ================= -->
+<main id="vaultScreen" class="screen hidden">
+  <header id="topbar">
+    <div class="brand">
+      <span class="seal">密</span>
+      <span class="brandtxt">密语保险箱<em>CIPHERVAULT</em></span>
+    </div>
+    <div class="topactions">
+      <button id="btnKeycardInfo" class="ghost">钥匙卡说明</button>
+      <button id="btnLock" class="ghost">锁 定</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidehead">卷宗 <span id="entryCount">0</span></div>
+      <ul id="entryList" class="entries"></ul>
+      <button id="btnNew" class="primary block">＋ 新增密码</button>
+      <div class="tips">
+        <strong>设计要点</strong>
+        <p>密文由「皮肤」编码；钥匙卡（.html）零依赖，可复制到任意路径、脱离本项目独立还原密码。</p>
+      </div>
+    </aside>
+    <section class="panel" id="detailPanel"></section>
+  </div>
+</main>
+
+<!-- ================= 钥匙卡说明模态 ================= -->
+<div id="kcModal" class="modal hidden">
+  <div class="box">
+    <h2>钥匙卡 · 解密脚本</h2>
+    <p>
+      「生成钥匙卡」会导出一个单独的 <code>.html</code> 文件，它内嵌：趣味密文、皮肤规则、以及
+      <b>被 AES-GCM 加密的密文载荷</b>。
+    </p>
+    <p>
+      因为它内部是密文、且解码需要主密码，所以<b>钥匙卡单独泄露也不等于泄露密码</b>；
+      同时它<b>零依赖、可脱离本项目</b>，复制到任意路径 / 任意机器，用浏览器打开、输入主密码即可还原密码。
+    </p>
+    <p style="color:var(--cinnabar-soft)">
+      注意：趣味层（字母 / 古诗 / 数字）只是“外衣”，任何只拿到密文与脚本的人都可以解开这层外衣——
+      真正的保护仍来自底层强加密。
+    </p>
+    <button class="btn close" onclick="document.getElementById('kcModal').classList.add('hidden')">明白了</button>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   CipherVault MVP —— 单文件原型
+   安全层：PBKDF2 派生密钥 + AES-GCM 整库加密（Web Crypto）
+   趣味层：皮肤（字母 / 古诗 / 数字 / 自定义逐位规则）只编码“密文”
+   ============================================================ */
+
+/* ---------- 通用编码工具 ---------- */
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+
+function bytesToB64(bytes){ let s=''; bytes.forEach(b=>s+=String.fromCharCode(b)); return btoa(s); }
+function b64ToBytes(b64){ const s=atob(b64); const a=new Uint8Array(s.length); for(let i=0;i<s.length;i++)a[i]=s.charCodeAt(i); return a; }
+function bytesToHex(bytes){ let s=''; bytes.forEach(b=>s+=b.toString(16).padStart(2,'0')); return s; }
+function hexToBytes(hex){ const a=new Uint8Array(hex.length/2); for(let i=0;i<a.length;i++)a[i]=parseInt(hex.substr(i*2,2),16); return a; }
+function uuid(){ return 'e'+Math.random().toString(16).slice(2,10)+Date.now().toString(16).slice(-6); }
+
+/* ---------- 安全层：密钥派生 + AES-GCM ---------- */
+async function deriveKey(password, saltB64, iters){
+  const baseKey = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name:'PBKDF2', salt:b64ToBytes(saltB64), iterations:iters, hash:'SHA-256' },
+    baseKey, { name:'AES-GCM', length:256 }, false, ['encrypt','decrypt']
+  );
+}
+async function encBytes(key, bytes){
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, bytes);
+  return { iv: bytesToB64(iv), ct: bytesToB64(new Uint8Array(ct)) };
+}
+async function decBytes(key, ivB64, ctB64){
+  const pt = await crypto.subtle.decrypt(
+    { name:'AES-GCM', iv:b64ToBytes(ivB64) }, key, b64ToBytes(ctB64)
+  );
+  return new Uint8Array(pt);
+}
+
+/* ---------- 趣味层：皮肤（作用于密文的十六进制 token） ---------- */
+const POEMS = ['床前明月光','疑是地上霜','举头望明月','低头思故乡',
+               '春眠不觉晓','处处闻啼鸟','夜来风雨声','花落知多少',
+               '白日依山尽','黄河入海流','欲穷千里目','更上一层楼',
+               '锄禾日当午','汗滴禾下土','谁知盘中餐','粒粒皆辛苦'];
+const SEP = '·';
+const XF = {
+  letter:{ label:'英文字母', encode:n=>String.fromCharCode(65+n), decode:s=>{const v=s.charCodeAt(0)-65; return (v>=0&&v<16)?v:-1;} },
+  number:{ label:'数字',     encode:n=>String(n+10),               decode:s=>{const v=parseInt(s,10)-10; return (v>=0&&v<16)?v:-1;} },
+  poem:  { label:'古诗',     encode:n=>POEMS[n],                   decode:s=>POEMS.indexOf(s) }
+};
+const SKIN_PRESETS = {
+  letter:{ name:'字母皮肤', rules:['letter'] },
+  poem:  { name:'古诗皮肤', rules:['poem'] },
+  number:{ name:'数字皮肤', rules:['number'] },
+  mixed: { name:'混合皮肤', rules:['letter','poem','number'] }
+};
+
+function encodeToken(hex, rules){
+  let out=[];
+  for(let i=0;i<hex.length;i++) out.push(XF[rules[i%rules.length]].encode(parseInt(hex[i],16)));
+  return out.join(SEP);
+}
+function decodeToken(display, rules){
+  const segs = display.split(SEP);
+  let hex = '';
+  for(let i=0;i<segs.length;i++){
+    const v = XF[rules[i%rules.length]].decode(segs[i]);
+    if(v<0) throw new Error('第 '+(i+1)+' 段无法还原，密文皮肤不匹配');
+    hex += v.toString(16);
+  }
+  return hex;
+}
+
+/* ---------- 状态 ---------- */
+const STORE = 'cv_store';
+let KEY=null, SALT=null, ITERS=200000, VAULT={entries:[]}, SEL=null;
+
+function readStore(){ try{ return JSON.parse(localStorage.getItem(STORE)||'null'); }catch(e){ return null; } }
+async function saveVault(){
+  const data = enc.encode(JSON.stringify(VAULT));
+  const { iv, ct } = await encBytes(KEY, data);
+  localStorage.setItem(STORE, JSON.stringify({ salt:SALT, iters:ITERS, iv, ct }));
+}
+
+/* ---------- 启动 ---------- */
+function boot(){
+  const store = readStore();
+  document.getElementById('lockMsg').textContent='';
+  if(store){ document.getElementById('lockUnlock').classList.remove('hidden'); document.getElementById('lockCreate').classList.add('hidden'); }
+  else{ document.getElementById('lockCreate').classList.remove('hidden'); document.getElementById('lockUnlock').classList.add('hidden'); }
+}
+function setMsg(t, ok){ const el=document.getElementById('lockMsg'); el.textContent=t; el.className='msg'+(ok?' ok':''); }
+
+async function doCreate(){
+  const a=document.getElementById('pwNew').value, b=document.getElementById('pwNew2').value;
+  if(a.length<4){ setMsg('主密码至少 4 位'); return; }
+  if(a!==b){ setMsg('两次输入的主密码不一致'); return; }
+  SALT = bytesToB64(crypto.getRandomValues(new Uint8Array(16)));
+  ITERS = 200000;
+  KEY = await deriveKey(a, SALT, ITERS);
+  VAULT = { entries:[] };
+  await saveVault();
+  enterVault();
+}
+async function doUnlock(){
+  const pw = document.getElementById('pwInput').value;
+  const store = readStore();
+  if(!store) return;
+  try{
+    KEY = await deriveKey(pw, store.salt, store.iters);
+    const pt = await decBytes(KEY, store.iv, store.ct);
+    VAULT = JSON.parse(dec.decode(pt));
+    SALT = store.salt; ITERS = store.iters;
+    enterVault();
+  }catch(e){
+    setMsg('主密码错误，或本地数据已损坏');
+  }
+}
+function enterVault(){
+  document.getElementById('lockScreen').classList.add('hidden');
+  document.getElementById('vaultScreen').classList.remove('hidden');
+  document.getElementById('vaultScreen').classList.add('fade');
+  renderList(); renderDetail();
+}
+function doLock(){
+  KEY=null; VAULT={entries:[]}; SEL=null;
+  document.getElementById('pwInput').value='';
+  document.getElementById('lockScreen').classList.remove('hidden');
+  document.getElementById('vaultScreen').classList.add('hidden');
+  boot();
+}
+
+/* ---------- 渲染：卷宗列表 ---------- */
+function renderList(){
+  const ul = document.getElementById('entryList');
+  document.getElementById('entryCount').textContent = VAULT.entries.length;
+  ul.innerHTML = '';
+  if(!VAULT.entries.length){
+    ul.innerHTML = '<li class="empty-hint">还没有任何卷宗。<br>点击下方「新增密码」开始。</li>';
+    return;
+  }
+  VAULT.entries.forEach(en=>{
+    const li=document.createElement('li');
+    const btn=document.createElement('button');
+    btn.className='entry'+(SEL===en.id?' active':'');
+    btn.innerHTML =
+      '<span class="en">'+esc(en.name||'（未命名）')+'</span>'+
+      '<span class="ea">'+esc(en.account||'—')+'</span>'+
+      '<span class="sk">'+esc(en.skin.name)+'</span>';
+    btn.onclick = ()=>{ SEL=en.id; renderList(); renderDetail(); };
+    li.appendChild(btn); ul.appendChild(li);
+  });
+}
+function esc(s){ return String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+/* ---------- 渲染：详情 / 编辑 ---------- */
+function renderDetail(){
+  const p = document.getElementById('detailPanel');
+  const en = VAULT.entries.find(e=>e.id===SEL);
+  if(!en){
+    p.innerHTML =
+      '<h2 class="ph">卷宗</h2>'+
+      '<p class="empty-hint" style="text-align:left;padding:0">从左侧选择一条密码，或新增一条。<br><br>'+
+      '每条密码都会：<br>① 以 AES-GCM 加密存入保险箱；<br>② 用所选「皮肤」编码成一串趣味密文；<br>③ 可导出可独立运行的钥匙卡。</p>';
+    return;
+  }
+  const rules = en.skin.rules;
+  p.innerHTML =
+    '<h2 class="ph">'+esc(en.name||'（未命名）')+'</h2>'+
+    '<div class="row">'+
+      '<div class="field"><label>名称</label><input id="fName" value="'+esc(en.name)+'"></div>'+
+      '<div class="field"><label>账号 / 备注</label><input id="fAcc" value="'+esc(en.account)+'"></div>'+
+    '</div>'+
+    '<div class="field"><label>密码原文</label><input id="fPw" type="text" value="'+esc(en.password)+'"></div>'+
+    '<div class="field"><label>皮肤（决定密文长什么样）</label><div class="chips" id="chips"></div></div>'+
+    '<div class="field"><label>自定义逐位规则（第 1 位…第 n 位，循环作用）</label>'+
+      '<div class="rules" id="ruleList"></div>'+
+      '<button class="btn" id="btnAddRule" style="margin-top:10px">＋ 增加一位规则</button>'+
+    '</div>'+
+    '<div class="cipherbox"><div class="clab">趣味密文</div><div class="cipher" id="cipherOut">…</div>'+
+      '<div class="selfcheck" id="selfCheck"></div></div>'+
+    '<div class="actions">'+
+      '<button class="btn key" id="btnKeycard">生成钥匙卡（解密脚本）</button>'+
+      '<button class="btn" id="btnCopy">复制密文</button>'+
+      '<button class="btn" id="btnSave">保存修改</button>'+
+      '<button class="btn danger" id="btnDel">删除</button>'+
+    '</div>'+
+    '<div class="status" id="detailStatus"></div>';
+
+  // 皮肤 chips
+  const chips = document.getElementById('chips');
+  Object.keys(SKIN_PRESETS).forEach(k=>{
+    const c=document.createElement('button');
+    const same = JSON.stringify(SKIN_PRESETS[k].rules)===JSON.stringify(en.skin.rules);
+    c.className='chip'+(same?' on':''); c.textContent=SKIN_PRESETS[k].name;
+    c.onclick=()=>{ en.skin={name:SKIN_PRESETS[k].name, rules:SKIN_PRESETS[k].rules.slice()}; saveVault(); renderList(); renderDetail(); };
+    chips.appendChild(c);
+  });
+
+  // 规则编辑器
+  const rl = document.getElementById('ruleList');
+  rules.forEach((r,i)=>{
+    const div=document.createElement('div'); div.className='rule';
+    div.innerHTML='<span class="no">#'+(i+1)+'</span>'+
+      '<select data-i="'+i+'">'+
+        Object.keys(XF).map(t=>'<option value="'+t+'"'+(t===r?' selected':'')+'>'+XF[t].label+'</option>').join('')+
+      '</select>'+
+      '<button class="del" data-del="'+i+'">移除</button>';
+    rl.appendChild(div);
+  });
+  rl.querySelectorAll('select').forEach(s=>s.onchange=()=>{
+    en.skin.rules[+s.dataset.i]=s.value; en.skin.name='自定义皮肤'; saveVault(); renderDetail();
+  });
+  rl.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{
+    if(en.skin.rules.length<=1) return;
+    en.skin.rules.splice(+b.dataset.del,1); en.skin.name='自定义皮肤'; saveVault(); renderList(); renderDetail();
+  });
+
+  document.getElementById('btnAddRule').onclick=()=>{
+    en.skin.rules.push('number'); en.skin.name='自定义皮肤'; saveVault(); renderDetail();
+  };
+
+  // 生成密文 + 自检
+  makeCipher(en);
+
+  document.getElementById('btnCopy').onclick=async()=>{
+    const t=document.getElementById('cipherOut').textContent;
+    try{ await navigator.clipboard.writeText(t); flash('已复制趣味密文'); }catch(e){ flash('复制失败，请手动选择','err'); }
+  };
+  document.getElementById('btnSave').onclick=()=>{
+    en.name=document.getElementById('fName').value.trim();
+    en.account=document.getElementById('fAcc').value.trim();
+    en.password=document.getElementById('fPw').value;
+    en.ts=Date.now();
+    saveVault().then(()=>{ renderList(); renderDetail(); flash('已保存'); });
+  };
+  document.getElementById('btnDel').onclick=()=>{
+    if(!confirm('确定删除「'+(en.name||'未命名')+'」？')) return;
+    VAULT.entries = VAULT.entries.filter(x=>x.id!==en.id); SEL=null;
+    saveVault().then(()=>{ renderList(); renderDetail(); });
+  };
+  document.getElementById('btnKeycard').onclick=()=>generateKeycard(en);
+}
+
+async function makeCipher(en){
+  const out=document.getElementById('cipherOut'), chk=document.getElementById('selfCheck');
+  out.textContent='…'; chk.textContent='';
+  const { iv, ct } = await encBytes(KEY, enc.encode(en.password));
+  const token = bytesToHex(b64ToBytes(ct));            // 密文（十六进制）
+  const display = encodeToken(token, en.skin.rules);   // 套皮肤
+  out.innerHTML = esc(display).split(SEP).join('<span class="sep">'+SEP+'</span>');
+  // 自检：能否反解回同一 token
+  try{
+    const back = decodeToken(display, en.skin.rules);
+    chk.textContent = (back===token ? '✓ 可逆性自检通过（密文可完整还原）'
+                                    : '✗ 可逆性自检失败');
+    chk.style.color = back===token ? 'var(--jade)' : 'var(--cinnabar-soft)';
+  }catch(e){ chk.textContent='✗ '+e.message; chk.style.color='var(--cinnabar-soft)'; }
+  en._last = { iv, ct, token, display };
+}
+function flash(t, k){ const el=document.getElementById('detailStatus'); el.textContent=t; el.className='status'+(k==='err'?' err':''); setTimeout(()=>{ el.textContent=''; },2600); }
+
+/* ---------- 新增 ---------- */
+function addEntry(){
+  const en={ id:uuid(), name:'新密码', account:'', password:'', skin:{name:SKIN_PRESETS.mixed.name, rules:SKIN_PRESETS.mixed.rules.slice()}, ts:Date.now() };
+  VAULT.entries.push(en); SEL=en.id;
+  saveVault().then(()=>{ renderList(); renderDetail(); document.getElementById('fPw').focus(); });
+}
+
+/* ============================================================
+   钥匙卡（解密脚本）生成 —— 独立单文件、零依赖
+   ============================================================ */
+function generateKeycard(en){
+  const last = en._last;
+  if(!last){ flash('请先等待密文生成','err'); return; }
+  const kc = {
+    v:'cv1',
+    salt:SALT, iters:ITERS, iv:last.iv, token:last.token,
+    display:last.display,
+    skin:{ name:en.skin.name, rules:en.skin.rules.slice(), poems:POEMS, sep:SEP },
+    title:en.name||'未命名'
+  };
+  const html = buildKeycard(kc);
+  const blob = new Blob([html], { type:'text/html;charset=utf-8' });
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download = 'keycard_'+(en.name||'entry').replace(/[\\/:*?"<>|]/g,'_')+'.html';
+  a.click(); URL.revokeObjectURL(a.href);
+  flash('钥匙卡已导出：可复制到任意路径、脱离本项目打开');
+}
+
+const KC_CSS = [
+'body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(900px 600px at 70% -10%,rgba(201,162,74,.12),transparent 60%),linear-gradient(160deg,#161310,#0c0a08);color:#ece5d6;font-family:"Noto Serif SC",Songti SC,serif;padding:20px}',
+'.card{width:min(520px,94vw);border:1px solid rgba(201,162,74,.25);border-radius:14px;padding:30px 30px 26px;background:linear-gradient(180deg,rgba(36,32,25,.7),rgba(19,17,15,.85));box-shadow:0 24px 60px -30px #000}',
+'.seal{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:10px;background:linear-gradient(145deg,#d0432f,#a52a20);color:#fbe9e3;font-family:"Ma Shan Zheng",serif;font-size:26px}',
+'h1{font-family:"Ma Shan Zheng",serif;font-weight:400;font-size:30px;margin:14px 0 4px;color:#e2c684}',
+'.sub{color:#8b8175;font-size:12px;letter-spacing:.2em;margin:0 0 22px}',
+'label{display:block;font-size:11px;letter-spacing:.24em;color:#8b8175;margin:16px 0 7px}',
+'.cipher{font-family:"JetBrains Mono",monospace;font-size:14px;line-height:1.95;color:#e9dcc0;word-break:break-all;background:rgba(0,0,0,.3);border:1px dashed rgba(201,162,74,.25);border-radius:10px;padding:14px}',
+'.meta{font-size:13px;color:#c9a24a}',
+'input{width:100%;padding:12px;border-radius:9px;background:rgba(0,0,0,.32);border:1px solid rgba(201,162,74,.25);color:#ece5d6;font-size:14px}',
+'input:focus{outline:none;border-color:#c9a24a}',
+'button{width:100%;margin-top:14px;padding:12px;border:0;border-radius:9px;background:linear-gradient(180deg,#e0685b,#c33a2e);color:#fff3ef;font-size:14px;letter-spacing:.2em;cursor:pointer;font-family:inherit}',
+'.out{margin-top:14px;font-family:"JetBrains Mono",monospace;font-size:15px;color:#5f9078;min-height:22px;word-break:break-all}',
+'.out.err{color:#e0685b}',
+'.note{font-size:11px;color:#8b8175;line-height:1.9;margin-top:20px;border-top:1px dashed rgba(201,162,74,.25);padding-top:14px}'
+].join('');
+
+const KC_JS = [
+'var D = JSON.parse(document.getElementById("kcdata").textContent);',
+'var POEMS = D.skin.poems, SEP = D.skin.sep || "\\u00b7", rules = D.skin.rules;',
+'var XF = {',
+'  letter:{ decode:function(s){ return s.charCodeAt(0)-65; } },',
+'  number:{ decode:function(s){ return parseInt(s,10)-10; } },',
+'  poem:{ decode:function(s){ return POEMS.indexOf(s); } }',
+'};',
+'function decodeToken(display){',
+'  var segs = display.split(SEP), hex = "";',
+'  for(var i=0;i<segs.length;i++){ var v = XF[rules[i%rules.length]].decode(segs[i]); if(v<0) throw new Error("第 "+(i+1)+" 段无法还原"); hex += v.toString(16); }',
+'  return hex;',
+'}',
+'function b64ToBytes(b){ var s=atob(b), a=new Uint8Array(s.length); for(var i=0;i<s.length;i++)a[i]=s.charCodeAt(i); return a; }',
+'function hexToBytes(h){ var a=new Uint8Array(h.length/2); for(var i=0;i<a.length;i++)a[i]=parseInt(h.substr(i*2,2),16); return a; }',
+'async function deriveKey(pw){',
+'  var base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveKey"]);',
+'  return crypto.subtle.deriveKey({ name:"PBKDF2", salt:b64ToBytes(D.salt), iterations:D.iters, hash:"SHA-256" }, base, { name:"AES-GCM", length:256 }, false, ["decrypt"]);',
+'}',
+'async function run(){',
+'  var out = document.getElementById("out"); out.className="out";',
+'  try{',
+'    var hex = decodeToken(D.display);',
+'    var key = await deriveKey(document.getElementById("pw").value);',
+'    var pt = await crypto.subtle.decrypt({ name:"AES-GCM", iv:b64ToBytes(D.iv) }, key, hexToBytes(hex));',
+'    out.textContent = "密码： " + new TextDecoder().decode(pt);',
+'  }catch(e){ out.className="out err"; out.textContent = "还原失败：主密码错误，或密文已被改动"; }',
+'}',
+'document.getElementById("display").textContent = D.display;',
+'document.getElementById("skin").textContent = D.skin.name;',
+'document.getElementById("go").addEventListener("click", run);',
+'document.getElementById("pw").addEventListener("keydown", function(e){ if(e.key==="Enter") run(); });'
+].join('\n');
+
+function buildKeycard(kc){
+  const data = JSON.stringify(kc).replace(/</g,'\\u003c').replace(/\u2028/g,'\\u2028').replace(/\u2029/g,'\\u2029');
+  return [
+'<!DOCTYPE html>','<html lang="zh-CN"><head><meta charset="utf-8">',
+'<meta name="viewport" content="width=device-width,initial-scale=1.0">',
+'<title>钥匙卡 · '+ (kc.title||'') +'</title>',
+'<link href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;600&family=JetBrains+Mono&display=swap" rel="stylesheet">',
+'<style>'+KC_CSS+'</style></head><body>',
+'<div class="card">',
+'<div class="seal">钥</div>',
+'<h1>CipherVault 钥匙卡</h1>',
+'<p class="sub">单文件 · 零依赖 · 可脱离原项目独立运行</p>',
+'<label>趣味密文</label><div class="cipher" id="display"></div>',
+'<label>皮肤</label><div class="meta" id="skin"></div>',
+'<label>主密码</label><input id="pw" type="password" placeholder="输入主密码以还原密码">',
+'<button id="go">还 原 密 码</button>',
+'<div class="out" id="out"></div>',
+'<p class="note">本卡片内部载荷仍是 AES-GCM 密文，需主密码才能解开；因此它单独泄露并不等于泄露密码。趣味层只是“外衣”。</p>',
+'</div>',
+'<script id="kcdata" type="application/json">'+data+'<\/script>',
+'<script>'+KC_JS+'<\/script>',
+'</body></html>'
+  ].join('\n');
+}
+
+/* ---------- 事件绑定 ---------- */
+document.getElementById('btnCreate').onclick=doCreate;
+document.getElementById('btnUnlock').onclick=doUnlock;
+document.getElementById('pwInput').addEventListener('keydown',e=>{ if(e.key==='Enter') doUnlock(); });
+document.getElementById('pwNew2').addEventListener('keydown',e=>{ if(e.key==='Enter') doCreate(); });
+document.getElementById('btnReset').onclick=()=>{
+  if(confirm('将清空本地保险箱数据，且不可恢复。确定继续？')){ localStorage.removeItem(STORE); boot(); }
+};
+document.getElementById('btnLock').onclick=doLock;
+document.getElementById('btnNew').onclick=addEntry;
+document.getElementById('btnKeycardInfo').onclick=()=>document.getElementById('kcModal').classList.remove('hidden');
+document.getElementById('kcModal').onclick=e=>{ if(e.target.id==='kcModal') e.currentTarget.classList.add('hidden'); };
+
+boot();
+</script>
+</body>
+</html>
