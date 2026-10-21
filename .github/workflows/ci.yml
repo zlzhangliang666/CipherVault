@@ -1,0 +1,106 @@
+name: CI
+
+# 三个组件各自独立。骨架阶段某些目录可能尚未创建，
+# 因此先用 detect 任务探测目录是否存在，不存在则跳过对应 job（不会出现红叉）。
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect:
+    name: detect components
+    runs-on: ubuntu-latest
+    outputs:
+      core: ${{ steps.d.outputs.core }}
+      backend: ${{ steps.d.outputs.backend }}
+      frontend: ${{ steps.d.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: d
+        name: 探测各组件是否已就绪
+        run: |
+          [ -f CipherVault-App/packages/ciphervault-core/pyproject.toml ] && echo "core=1" >> "$GITHUB_OUTPUT" || echo "core=0" >> "$GITHUB_OUTPUT"
+          [ -f CipherVault-App/backend/pyproject.toml ] && echo "backend=1" >> "$GITHUB_OUTPUT" || echo "backend=0" >> "$GITHUB_OUTPUT"
+          [ -f CipherVault-App/frontend/package.json ] && echo "frontend=1" >> "$GITHUB_OUTPUT" || echo "frontend=0" >> "$GITHUB_OUTPUT"
+
+  core:
+    name: core (crypto lib)
+    needs: detect
+    if: needs.detect.outputs.core == '1'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: CipherVault-App/packages/ciphervault-core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e ".[dev]"
+      - run: python -m ruff check .
+      - run: python -m pytest -q
+
+  backend:
+    name: backend (FastAPI)
+    needs: detect
+    if: needs.detect.outputs.backend == '1'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: CipherVault-App/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e ".[dev]"
+      - run: python -m ruff check .
+      - run: python -m pytest -q
+
+  frontend:
+    name: frontend (React)
+    needs: detect
+    if: needs.detect.outputs.frontend == '1'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: CipherVault-App/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: CipherVault-App/frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test -- --run
+      - run: npm run build
+
+  contracts:
+    name: contracts (跨语言一致性)
+    needs: detect
+    if: needs.detect.outputs.core == '1'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: 校验跨语言测试向量能由核心库逐字节复现
+        working-directory: CipherVault-App/packages/ciphervault-core
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          python -m ciphervault_core.vectors --verify vectors.json

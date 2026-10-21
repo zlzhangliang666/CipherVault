@@ -1,0 +1,40 @@
+# 一键启动 CipherVault App（前端 nginx :5173 → 后端 FastAPI :8000）
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    image: ciphervault-app-api:latest
+    container_name: ciphervault-api
+    environment:
+      DATABASE_URL: sqlite:////data/ciphervault.db
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-me}
+      JWT_TTL_SECONDS: "86400"
+      PEPPER: ${PEPPER:-dev-pepper-change-me}
+      CORS_ORIGINS: http://localhost:5173,http://localhost:8080
+    volumes:
+      - vaultdata:/data
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+      args:
+        VITE_API_BASE: /api/v1
+    image: ciphervault-app-web:latest
+    container_name: ciphervault-web
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "5173:80"
+
+volumes:
+  vaultdata:

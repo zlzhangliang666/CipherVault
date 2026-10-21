@@ -1,0 +1,160 @@
+[
+  {
+    "name": "vec-01-mixed",
+    "note": "混合皮肤（字母/古诗/数字循环）",
+    "masterPassword": "blue-Harbor-2026-quiet",
+    "entryPassword": "S3cr3t-Entry-01!",
+    "saltHex": "101112131415161718191a1b1c1d1e1f",
+    "ivHex": "a0a1a2a3a4a5a6a7a8a9aaabacadaeaf",
+    "iters": 200000,
+    "authHashHex": "d5a0a6dee75cece2078ba13907beedd6d59bc26706b3ef6f2ccf334f547f41fe",
+    "vaultKeyHex": "d58fa1de06e0100ed0e2a82f35df49b4aa791f25170a15d0d4f52e41a8ad1821",
+    "ctHex": "16d7d477729b5ddc3bf5fecf11e036d6",
+    "tagHex": "68a7ec9b1b7ee889a58c0315dc76a009b185783d9960dbff61a0330c2e41b8bd",
+    "display": "B·夜来风雨声·23·H·汗滴禾下土·14·H·花落知多少·17·C·黄河入海流·21·F·汗滴禾下土·23·M·低头思故乡·21·P·处处闻啼鸟·25·O·锄禾日当午·25·B·疑是地上霜·24·A·低头思故乡·16·N·夜来风雨声",
+    "skin": {
+      "name": "混合皮肤",
+      "rules": [
+        "letter",
+        "poem",
+        "number"
+      ],
+      "poems": [
+        "床前明月光",
+        "疑是地上霜",
+        "举头望明月",
+        "低头思故乡",
+        "春眠不觉晓",
+        "处处闻啼鸟",
+        "夜来风雨声",
+        "花落知多少",
+        "白日依山尽",
+        "黄河入海流",
+        "欲穷千里目",
+        "更上一层楼",
+        "锄禾日当午",
+        "汗滴禾下土",
+        "谁知盘中餐",
+        "粒粒皆辛苦"
+      ],
+      "sep": "·"
+    }
+  },
+  {
+    "name": "vec-02-poem",
+    "note": "古诗皮肤",
+    "masterPassword": "quiet-Meadow-2026-lantern",
+    "entryPassword": "Abc123!@#",
+    "saltHex": "202122232425262728292a2b2c2d2e2f",
+    "ivHex": "b0b1b2b3b4b5b6b7b8b9babbbcbdbebf",
+    "iters": 200000,
+    "authHashHex": "578c4e11bdefd1ab0398400be47988be2a8d1c2c63ef095a4076eedb46a5b7a6",
+    "vaultKeyHex": "7128a96c40603ce7b5defb528deda5ff748b8fa98fa36b79eaff56494119f5b6",
+    "ctHex": "ed5516246847302959",
+    "tagHex": "7d7ba443d428d29b7d30a6663385396f595bba28ccc561d635558f5234237fc6",
+    "display": "谁知盘中餐·汗滴禾下土·处处闻啼鸟·处处闻啼鸟·疑是地上霜·夜来风雨声·举头望明月·春眠不觉晓·夜来风雨声·白日依山尽·春眠不觉晓·花落知多少·低头思故乡·床前明月光·举头望明月·黄河入海流·处处闻啼鸟·黄河入海流",
+    "skin": {
+      "name": "古诗皮肤",
+      "rules": [
+        "poem"
+      ],
+      "poems": [
+        "床前明月光",
+        "疑是地上霜",
+        "举头望明月",
+        "低头思故乡",
+        "春眠不觉晓",
+        "处处闻啼鸟",
+        "夜来风雨声",
+        "花落知多少",
+        "白日依山尽",
+        "黄河入海流",
+        "欲穷千里目",
+        "更上一层楼",
+        "锄禾日当午",
+        "汗滴禾下土",
+        "谁知盘中餐",
+        "粒粒皆辛苦"
+      ],
+      "sep": "·"
+    }
+  },
+  {
+    "name": "vec-03-letter",
+    "note": "字母皮肤",
+    "masterPassword": "amber-River-2026-candle",
+    "entryPassword": "0f9A-kQ2!z",
+    "saltHex": "303132333435363738393a3b3c3d3e3f",
+    "ivHex": "c0c1c2c3c4c5c6c7c8c9cacbcccdcecf",
+    "iters": 200000,
+    "authHashHex": "73890aa039d7e271c045544c9c34540b94df459bf2be56955781de8cfab647f3",
+    "vaultKeyHex": "a59917c6ca0f7923067d6c4d62227ff1a27e1ecf236255c979e5499a9981c279",
+    "ctHex": "49fe913edec0352c5630",
+    "tagHex": "9d2ad702e07b13ff2087a9efe77769bab3b86d1ec5db1bacdd7a4c6acbf745d9",
+    "display": "E·J·P·O·J·B·D·O·N·O·M·A·D·F·C·M·F·G·D·A",
+    "skin": {
+      "name": "字母皮肤",
+      "rules": [
+        "letter"
+      ],
+      "poems": [
+        "床前明月光",
+        "疑是地上霜",
+        "举头望明月",
+        "低头思故乡",
+        "春眠不觉晓",
+        "处处闻啼鸟",
+        "夜来风雨声",
+        "花落知多少",
+        "白日依山尽",
+        "黄河入海流",
+        "欲穷千里目",
+        "更上一层楼",
+        "锄禾日当午",
+        "汗滴禾下土",
+        "谁知盘中餐",
+        "粒粒皆辛苦"
+      ],
+      "sep": "·"
+    }
+  },
+  {
+    "name": "vec-04-number",
+    "note": "数字皮肤",
+    "masterPassword": "silver-Pine-2026-orbit",
+    "entryPassword": "Tr0ub4dor&3",
+    "saltHex": "404142434445464748494a4b4c4d4e4f",
+    "ivHex": "d0d1d2d3d4d5d6d7d8d9dadbdcdddedf",
+    "iters": 200000,
+    "authHashHex": "bd70257c96d08ad7348d226e6635b0325c8a2500c70addb978e52f60118d5360",
+    "vaultKeyHex": "35e66913810114e5a6393391cffdc35c139d667bf39af2ef3b790c1f40feb55d",
+    "ctHex": "e22adcf06917e1d1b74b07",
+    "tagHex": "1f85cd6bebf1aeab5b5fea12edc0bdc806047fb9272b731797b15d1465771124",
+    "display": "24·12·12·20·23·22·25·10·16·19·11·17·24·11·23·11·21·17·14·21·10·17",
+    "skin": {
+      "name": "数字皮肤",
+      "rules": [
+        "number"
+      ],
+      "poems": [
+        "床前明月光",
+        "疑是地上霜",
+        "举头望明月",
+        "低头思故乡",
+        "春眠不觉晓",
+        "处处闻啼鸟",
+        "夜来风雨声",
+        "花落知多少",
+        "白日依山尽",
+        "黄河入海流",
+        "欲穷千里目",
+        "更上一层楼",
+        "锄禾日当午",
+        "汗滴禾下土",
+        "谁知盘中餐",
+        "粒粒皆辛苦"
+      ],
+      "sep": "·"
+    }
+  }
+]
