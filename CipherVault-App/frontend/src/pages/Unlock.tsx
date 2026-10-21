@@ -1,103 +1,99 @@
-import { useState } from 'react';
-import { getKdf, login, getVault, ApiError } from '../api/client';
-import { deriveAuthHash, deriveVaultKey } from '../crypto/kdf';
+import { useEffect, useState } from 'react';
+import { deriveVaultKey } from '../crypto/kdf';
 import { decryptVault } from '../crypto/vault';
 import { useSession } from '../state/session';
 import { useVaultStore } from '../state/vaultStore';
+import {
+  hasBackup,
+  parseVaultFile,
+  pickVaultFile,
+  readVaultText,
+  restoreBackup,
+  vaultLocation,
+  writeVaultText,
+} from '../storage/vaultFile';
 
 interface UnlockProps {
   onUnlocked: () => void;
 }
 
 export function Unlock({ onUnlocked }: UnlockProps) {
-  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [mode, setMode] = useState<'login' | 'register'>('login');
-  const setSession = useSession((s) => s.setSession);
-  const loadDoc = useVaultStore((s) => s.loadDoc);
+  const [location, setLocation] = useState('');
+  const [backupReady, setBackupReady] = useState(false);
+
+  useEffect(() => {
+    vaultLocation().then(setLocation).catch(() => setLocation(''));
+    hasBackup().then(setBackupReady).catch(() => setBackupReady(false));
+  }, []);
 
   const handleSubmit = async () => {
     setError('');
+    if (!password) {
+      setError('请输入主密码');
+      return;
+    }
     setLoading(true);
     try {
-      const normalized = email.trim().toLowerCase();
-      if (!normalized || !password) {
-        setError('请输入邮箱和主密码');
+      const text = await readVaultText();
+      if (!text) {
+        setError('找不到保险箱文件，请先创建或从备份导入');
         setLoading(false);
         return;
       }
+      const file = parseVaultFile(text);
+      const vaultKey = await deriveVaultKey(password, file.kdf.salt, file.kdf.iters);
+      const doc = await decryptVault(vaultKey, file.iv, file.ct);
 
-      if (mode === 'login') {
-        // Get KDF salt
-        const kdfData = await getKdf(normalized);
-        const authHash = await deriveAuthHash(password, kdfData.kdfSalt, kdfData.kdfIters);
-        const loginRes = await login(normalized, authHash);
-        const vaultKey = await deriveVaultKey(password, kdfData.kdfSalt, kdfData.kdfIters);
-
-        // Load vault
-        let vaultDoc = null;
-        let version = 0;
-        try {
-          const blob = await getVault(loginRes.token);
-          if (blob) {
-            vaultDoc = await decryptVault(vaultKey, blob.iv, blob.ct);
-            version = blob.version;
-          } else {
-            // Empty vault - create a fresh one
-            vaultDoc = { entries: [], categories: ['通用'], settings: { autoLockMin: 5, clipboardClearSec: 30 } };
-            version = 0;
-          }
-        } catch (e) {
-          if (e instanceof ApiError && e.code === 'VAULT_EMPTY') {
-            vaultDoc = { entries: [], categories: ['通用'], settings: { autoLockMin: 5, clipboardClearSec: 30 } };
-            version = 0;
-          } else {
-            throw e;
-          }
-        }
-
-        setSession({
-          masterPassword: password,
-          token: loginRes.token,
-          vaultKey,
-          userId: loginRes.userId,
-          email: normalized,
-        });
-        loadDoc(vaultDoc, version);
-        onUnlocked();
-      } else {
-        // Register first
-        setError('请先注册（尚未实现完整的注册流程，此按钮仅为演示）');
-        setLoading(false);
-      }
+      useSession.getState().setSession({
+        masterPassword: password,
+        vaultKey,
+        saltHex: file.kdf.salt,
+        iters: file.kdf.iters,
+      });
+      useVaultStore.getState().loadDoc(doc);
+      onUnlocked();
     } catch (e) {
-      if (e instanceof ApiError) {
-        setError(e.message);
-      } else {
-        setError((e as Error).message);
-      }
+      setError((e as Error).message || '解锁失败');
       setLoading(false);
+    }
+  };
+
+  const handleImport = async () => {
+    setError('');
+    try {
+      const text = await pickVaultFile();
+      if (!text) return;
+      parseVaultFile(text);
+      await writeVaultText(text);
+      setPassword('');
+      setError('已载入该文件，请输入它对应的主密码解锁');
+    } catch (e) {
+      setError(`导入失败：${(e as Error).message}`);
+    }
+  };
+
+  const handleRestore = async () => {
+    setError('');
+    const ok = await restoreBackup();
+    if (ok) {
+      setError('已从上次写入前的备份恢复，请重新输入主密码');
+    } else {
+      setError('没有可用的备份');
     }
   };
 
   return (
     <div style={centerStyle}>
       <div style={cardStyle}>
-        <h1 style={{ fontSize: 'var(--fs-xl)', margin: '0 0 var(--sp-lg)', fontWeight: 600, textAlign: 'center' }}>
+        <h1 style={{ fontSize: 'var(--fs-xl)', margin: '0 0 var(--sp-xs)', fontWeight: 600, textAlign: 'center' }}>
           🔐 解锁 CipherVault
         </h1>
-
-        <label style={labelStyle}>邮箱</label>
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          style={inputStyle}
-          placeholder="alice@example.com"
-          autoFocus
-        />
+        <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--mute)', textAlign: 'center', margin: '0 0 var(--sp-lg)', wordBreak: 'break-all' }}>
+          数据位置：{location || '本地文件'}
+        </p>
 
         <label style={labelStyle}>主密码</label>
         <input
@@ -106,29 +102,37 @@ export function Unlock({ onUnlocked }: UnlockProps) {
           onChange={(e) => setPassword(e.target.value)}
           style={inputStyle}
           placeholder="输入你的主密码"
-          onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+          autoFocus
+          onKeyDown={(e) => e.key === 'Enter' && !loading && handleSubmit()}
         />
 
-        {error && <p style={{ color: 'var(--bad)', fontSize: 'var(--fs-sm)', marginTop: 'var(--sp-sm)' }}>{error}</p>}
+        {error && (
+          <p style={{ color: 'var(--bad)', fontSize: 'var(--fs-sm)', margin: 'var(--sp-sm) 0 0', lineHeight: 1.6 }}>
+            {error}
+          </p>
+        )}
 
-        <div style={{ marginTop: 'var(--sp-lg)', display: 'flex', gap: 'var(--sp-sm)' }}>
-          {mode === 'login' ? (
-            <button onClick={handleSubmit} disabled={loading} style={{ ...primaryBtnStyle, flex: 1 }}>
-              {loading ? '解锁中...' : '解锁'}
-            </button>
-          ) : (
-            <button onClick={handleSubmit} disabled={loading} style={{ ...primaryBtnStyle, flex: 1 }}>
-              注册
+        <button
+          onClick={handleSubmit}
+          disabled={loading}
+          style={{ ...primaryBtnStyle, marginTop: 'var(--sp-lg)', width: '100%', opacity: loading ? 0.6 : 1 }}
+        >
+          {loading ? '解锁中...' : '解锁'}
+        </button>
+
+        <div style={{ display: 'flex', gap: 'var(--sp-sm)', marginTop: 'var(--sp-sm)' }}>
+          <button onClick={handleImport} style={ghostBtnStyle}>
+            从保险箱文件导入
+          </button>
+          {backupReady && (
+            <button onClick={handleRestore} style={ghostBtnStyle}>
+              从备份恢复
             </button>
           )}
         </div>
 
-        <p style={{ textAlign: 'center', fontSize: 'var(--fs-xs)', color: 'var(--mute)', marginTop: 'var(--sp)' }}>
-          {mode === 'login' ? (
-            <>没有账号？<button onClick={() => setMode('register')} style={{ color: 'var(--accent)', border: 'none', background: 'none', cursor: 'pointer', fontWeight: 600 }}>注册</button></>
-          ) : (
-            <>已有账号？<button onClick={() => setMode('login')} style={{ color: 'var(--accent)', border: 'none', background: 'none', cursor: 'pointer', fontWeight: 600 }}>登录</button></>
-          )}
+        <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--mute)', marginTop: 'var(--sp-lg)', lineHeight: 1.7 }}>
+          主密码没有找回功能，也无法被任何人重置。建议把主密码记在纸上，收在安全的地方。
         </p>
       </div>
     </div>
@@ -159,7 +163,6 @@ const labelStyle: React.CSSProperties = {
   fontWeight: 600,
   color: 'var(--dim)',
   marginBottom: 4,
-  marginTop: 'var(--sp)',
 };
 
 const inputStyle: React.CSSProperties = {
@@ -180,6 +183,18 @@ const primaryBtnStyle: React.CSSProperties = {
   border: 'none',
   borderRadius: 'var(--r-sm)',
   fontSize: 'var(--fs)',
+  fontWeight: 600,
+  cursor: 'pointer',
+};
+
+const ghostBtnStyle: React.CSSProperties = {
+  flex: 1,
+  padding: '8px 12px',
+  background: 'var(--surface-2)',
+  color: 'var(--dim)',
+  border: '1px solid var(--line-2)',
+  borderRadius: 'var(--r-sm)',
+  fontSize: 'var(--fs-xs)',
   fontWeight: 600,
   cursor: 'pointer',
 };

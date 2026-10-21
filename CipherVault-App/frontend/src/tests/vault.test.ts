@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { encryptVault, decryptVault } from '../crypto/vault';
-import type { VaultDoc } from '../api/types';
+import type { VaultDoc } from '../types';
 
 const sampleDoc: VaultDoc = {
   entries: [

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Entry, VaultDoc } from '../api/types';
+import type { Entry, VaultDoc } from '../types';
 import { newId } from '../lib/id';
 
 interface VaultState {
@@ -9,9 +9,8 @@ interface VaultState {
     autoLockMin: number;
     clipboardClearSec: number;
   };
-  version: number;
 
-  loadDoc: (doc: VaultDoc, version: number) => void;
+  loadDoc: (doc: VaultDoc) => void;
   addEntry: (entry: Omit<Entry, 'id' | 'ts'>) => void;
   updateEntry: (id: string, patch: Partial<Entry>) => void;
   deleteEntry: (id: string) => void;
@@ -30,14 +29,12 @@ export const useVaultStore = create<VaultState>((set, get) => ({
   entries: [],
   categories: ['通用'],
   settings: { ...defaultSettings },
-  version: 0,
 
-  loadDoc: (doc, version) =>
+  loadDoc: (doc) =>
     set({
       entries: doc.entries ?? [],
       categories: doc.categories ?? ['通用'],
-      settings: doc.settings ?? defaultSettings,
-      version,
+      settings: doc.settings ?? { ...defaultSettings },
     }),
 
   addEntry: (data) => {
@@ -80,6 +77,5 @@ export const useVaultStore = create<VaultState>((set, get) => ({
       entries: [],
       categories: ['通用'],
       settings: { ...defaultSettings },
-      version: 0,
     }),
 }));

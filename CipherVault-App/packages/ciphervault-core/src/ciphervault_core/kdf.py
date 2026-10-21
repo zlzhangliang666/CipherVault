@@ -3,16 +3,16 @@
     dk = PBKDF2-HMAC-SHA256( password = UTF8(主密码), salt = kdfSalt(16B),
                              iterations = kdfIters, dkLen = 64 )
 
-    vaultKey = dk[0:32]        # AES-GCM-256 密钥，仅存于客户端内存，绝不上传
-    authHash = hex(dk[32:64])  # 64 个 hex 字符，用于登录校验，可上传
+    vaultKey = dk[0:32]        # AES-GCM-256 密钥，仅存于渲染进程内存，绝不落盘
+    authHash = hex(dk[32:64])  # 单机版运行时不再使用，仅为跨语言向量兼容保留
 
 要点：
 
-* 一次 PBKDF2 同时得到「加密密钥」与「登录校验值」，二者由同一 64 字节输出切分而来。
+* 一次 PBKDF2 同时得到两段输出，二者由同一 64 字节输出切分而来。
 * **切分顺序不可颠倒**：前 32 字节是 ``vaultKey``（钥匙卡里叫 ``ENC``），
   后 32 字节是 ``authHash`` 的原始字节（钥匙卡里叫 ``MAC``）。
-* 服务器只存 ``kdfSalt``、``kdfIters`` 与 ``sha256(PEPPER + authHash)``，
-  永不接触主密码与 ``vaultKey``（零知识信任边界，``docs/ARCHITECTURE.md`` 第 2 节）。
+* ``kdfSalt`` 与 ``kdfIters`` 随 ``vault.cvault`` 一起落盘；``vaultKey`` 不落盘。
+  单机版没有服务器，``authHash`` 只用于验证跨语言派生结果一致。
 * 与 WebCrypto 等价：本模块的 ``hashlib.pbkdf2_hmac`` 与前端
   ``crypto.subtle.deriveBits(..., 64 * 8)`` 结果完全一致；前端**不得**用
   ``deriveKey`` 去算 ``authHash``（``deriveKey`` 无法导出原始字节）。

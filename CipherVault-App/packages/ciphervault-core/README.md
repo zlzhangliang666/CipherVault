@@ -1,7 +1,7 @@
 # ciphervault-core
 
 CipherVault 的**加密核心库**：用纯 Python 标准库实现 [`docs/ALGORITHM.md`](../../docs/ALGORITHM.md)
-（冻结的算法规格 v1.0），并提供**跨语言基准向量** [`vectors.json`](vectors.json) 的校验 CLI。
+（冻结的算法规格 v2.0，单机离线版），并提供**跨语言基准向量** [`vectors.json`](vectors.json) 的校验 CLI。
 
 前端（组员 A，TS/WebCrypto）算出的密文必须与本库**逐字节相同**——这是整个项目的集成验收基准。
 
@@ -20,7 +20,7 @@ CipherVault 的**加密核心库**：用纯 Python 标准库实现 [`docs/ALGORI
 | 规格章节 | 内容 | 本库模块 |
 |---|---|---|
 | §1 密钥派生 | `dk = PBKDF2-HMAC-SHA256(UTF8(主密码), kdfSalt(16B), kdfIters, 64)`；`vaultKey = dk[0:32]`、`authHash = hex(dk[32:64])` | [`kdf.py`](src/ciphervault_core/kdf.py) |
-| §2 保险箱加解密 | `iv` 12B 随机 + `AES-GCM-256(vaultKey)`。**只有前端解密**，后端与核心库都不解密 | [`vault.py`](src/ciphervault_core/vault.py)（★ 只做文档与参数校验，**不实现真实 AES**） |
+| §2 保险箱加解密 | `iv` 12B 随机 + `AES-GCM-256(vaultKey)`。**只有渲染进程解密**，核心库不实现 AES | [`vault.py`](src/ciphervault_core/vault.py)（★ 只做文档与参数校验） |
 | §3 钥匙卡载荷 | `ENC = dk[0:32]`、`MAC = dk[32:64]`；`ks = HMAC-SHA256(ENC, iv ‖ uint32be(counter))`；`ct = pt XOR ks`；`tag = HMAC-SHA256(MAC, iv ‖ ct)`。`iv` **16 字节** | [`stream.py`](src/ciphervault_core/stream.py)（原语）、[`keycard.py`](src/ciphervault_core/keycard.py)（载荷级） |
 | §4 趣味皮肤 | `SEP = "·"`(U+00B7)、`POEMS` 16 句、`letter`/`number`/`poem` 三个双射映射，按 `i % len(rules)` 循环编码 `ctHex` | [`skin.py`](src/ciphervault_core/skin.py) |
 | §5 钥匙卡产物 | `keycard_<名称>.html` 与 `ciphervault_keycard_<名称>.py` 两种，载荷相同 | [`../../tools/reference_keycard.py`](../../tools/reference_keycard.py) |
@@ -35,8 +35,8 @@ CipherVault 的**加密核心库**：用纯 Python 标准库实现 [`docs/ALGORI
 
 | # | 规则 |
 |---|---|
-| R1 | 主密码、明文、`vaultKey` **绝不允许**出现在任何 HTTP 请求体 / URL / 日志中 |
-| R2 | 服务器只存 `sha256(PEPPER + authHash)` 与密文 blob |
+| R1 | 主密码、明文、`vaultKey` **绝不落盘、绝不写入日志**（单机版无任何网络请求） |
+| R2 | 磁盘上只有 `vault.cvault` 密文；主进程不接触密钥 |
 | R3 | 所有加密/解密逻辑只在 `frontend/` 与本包中实现，且必须与 `docs/ALGORITHM.md` 完全一致 |
 
 因此本库所有异常文案都是**固定串**（例如主密码错误统一为「主密码不正确」），
@@ -198,14 +198,14 @@ from ciphervault_core import (
     keystream, xor_stream, compute_tag, verify_tag,       # §3 密钥流与 tag
     SEP, POEMS, XF, encode_token, decode_token,           # §4 趣味皮肤
     kc_encrypt, kc_decrypt,                               # §3 钥匙卡载荷
-    validate_vault_blob, validate_put_request,            # §2 blob 校验（无 AES）
+    validate_vault_blob,                                   # §2 blob 校验（无 AES）
     KDF_DKLEN, KDF_ITERS_DEFAULT, KDF_SALT_LEN,
     KEYCARD_IV_LEN, VAULT_IV_LEN,
 )
 ```
 
 ```python
-# 注册：派生 vaultKey（只留内存）与 authHash（上传给服务器再哈希落库）
+# 创建保险箱：派生 vaultKey（只留内存）；authHash 仅用于跨语言向量对照
 salt = bytes.fromhex("101112131415161718191a1b1c1d1e1f")
 vault_key, auth_hash = derive_keys("blue-Harbor-2026-quiet", salt)
 assert auth_hash_hex("blue-Harbor-2026-quiet", salt) == auth_hash.hex()

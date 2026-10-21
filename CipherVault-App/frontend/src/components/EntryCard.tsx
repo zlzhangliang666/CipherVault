@@ -1,4 +1,4 @@
-import type { Entry } from '../api/types';
+import type { Entry } from '../types';
 
 interface EntryCardProps {
   entry: Entry;

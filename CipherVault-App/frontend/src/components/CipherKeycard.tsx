@@ -1,9 +1,7 @@
 import { useState } from 'react';
-import type { Entry } from '../api/types';
-import { encodeToken } from '../crypto/skin';
-import { keycardEncrypt } from '../crypto/stream';
-import { bytesToHex } from '../lib/hex';
-import { randomSalt16 } from '../crypto/kdf';
+import type { Entry, EntryKeycard } from '../types';
+import { createEntryKeycard } from '../crypto/keycard';
+import type { KeycardPayload } from '../crypto/stream';
 import { buildKeycardHtml } from '../keycard/buildHtml';
 import { buildKeycardPy } from '../keycard/buildPy';
 import { Modal } from './Modal';
@@ -14,49 +12,37 @@ interface CipherKeycardProps {
   onClose: () => void;
 }
 
-type RuleName = 'letter' | 'number' | 'poem';
-
 export function CipherKeycard({ entry, masterPassword, onClose }: CipherKeycardProps) {
   const [status, setStatus] = useState<'ready' | 'generating' | 'done'>('ready');
   const [error, setError] = useState('');
-  const [displayStr, setDisplayStr] = useState('');
+  const [kc, setKc] = useState<EntryKeycard | null>(entry.kc ?? null);
 
-  const ctHex = entry.password
-    .split('')
-    .map((c) => c.charCodeAt(0).toString(16).padStart(2, '0'))
-    .join('');
-  const display = status === 'done' ? displayStr : encodeToken(ctHex, entry.skin.rules as RuleName[]);
+  const display = kc?.display ?? '';
 
   const generate = async () => {
+    if (!entry.password) {
+      setError('请先填写密码再生成钥匙卡');
+      return;
+    }
     setStatus('generating');
     setError('');
     try {
-      const salt = randomSalt16();
-      const iv = new Uint8Array(16);
-      crypto.getRandomValues(iv);
-      const iters = 200000;
+      const payloadKc =
+        kc ?? (await createEntryKeycard(masterPassword, entry.password, entry.skin.rules));
+      setKc(payloadKc);
 
-      const { ct, tag } = await keycardEncrypt(masterPassword, entry.password, salt, iv, iters);
-
-      const payload = {
-        saltHex: bytesToHex(salt),
-        ivHex: bytesToHex(iv),
-        ctHex: bytesToHex(ct),
-        tagHex: bytesToHex(tag),
-        iters,
-        display,
+      const payload: KeycardPayload = {
+        ...payloadKc,
         skinName: entry.skin.name,
         entryName: entry.name,
       };
 
-      setDisplayStr(display);
-
       const name = entry.name || 'entry';
-      const html = buildKeycardHtml(payload, name, display);
-      const py = buildKeycardPy(payload, name, display);
+      const html = buildKeycardHtml(payload, name, payloadKc.display);
+      const py = buildKeycardPy(payload, name, payloadKc.display);
 
-      downloadBlob(html, `keycard_${name}.html`, 'text/html');
-      downloadBlob(py, `ciphervault_keycard_${name}.py`, 'text/plain');
+      downloadBlob(html, `keycard_${safeName(name)}.html`, 'text/html');
+      downloadBlob(py, `ciphervault_keycard_${safeName(name)}.py`, 'text/plain');
 
       setStatus('done');
     } catch (e) {
@@ -68,7 +54,7 @@ export function CipherKeycard({ entry, masterPassword, onClose }: CipherKeycardP
   return (
     <Modal open onClose={onClose} title="🔐 钥匙卡">
       <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--dim)', margin: '0 0 var(--sp-lg)' }}>
-        将条目密码加密后生成可离线运行的 HTML 与 Python 文件。
+        把条目密码用主密码加密后，生成可离线运行的 HTML 与 Python 文件。趣味显示由密文编码，不含明文。
       </p>
 
       <div
@@ -83,9 +69,10 @@ export function CipherKeycard({ entry, masterPassword, onClose }: CipherKeycardP
           marginBottom: 'var(--sp-lg)',
           maxHeight: 120,
           overflow: 'auto',
+          color: 'var(--dim)',
         }}
       >
-        {display}
+        {display || '生成后显示'}
       </div>
 
       {error && (
@@ -94,7 +81,7 @@ export function CipherKeycard({ entry, masterPassword, onClose }: CipherKeycardP
 
       {status === 'done' && (
         <p style={{ color: 'var(--good)', fontSize: 'var(--fs-sm)', marginBottom: 'var(--sp)' }}>
-          ✅ 已生成并下载 keycard_{entry.name || 'entry'}.html 与 ciphervault_keycard_{(entry.name || 'entry')}.py
+          ✅ 已下载 keycard_{entry.name || 'entry'}.html 与 ciphervault_keycard_{entry.name || 'entry'}.py
         </p>
       )}
 
@@ -104,7 +91,7 @@ export function CipherKeycard({ entry, masterPassword, onClose }: CipherKeycardP
           <button
             onClick={generate}
             disabled={status === 'generating'}
-            style={{ ...btnStyle, background: 'var(--accent)', color: '#fff' }}
+            style={{ ...btnStyle, background: 'var(--accent)', color: '#fff', border: 'none' }}
           >
             {status === 'generating' ? '生成中...' : '生成钥匙卡'}
           </button>
@@ -112,6 +99,10 @@ export function CipherKeycard({ entry, masterPassword, onClose }: CipherKeycardP
       </div>
     </Modal>
   );
+}
+
+function safeName(name: string): string {
+  return name.replace(/[\\/:*?"<>|]/g, '_').slice(0, 60) || 'entry';
 }
 
 function downloadBlob(content: string, filename: string, mime: string) {
@@ -129,6 +120,7 @@ const btnStyle: React.CSSProperties = {
   borderRadius: 'var(--r-sm)',
   border: '1px solid var(--line-2)',
   background: 'var(--surface)',
+  color: 'var(--txt)',
   fontSize: 'var(--fs-sm)',
   fontWeight: 600,
   cursor: 'pointer',

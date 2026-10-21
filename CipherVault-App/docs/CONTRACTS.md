@@ -1,8 +1,8 @@
-# 接口契约（冻结）
+# 本地文件契约（冻结）
 
-> **状态：v1.0 已冻结。**
+> **状态：v2.0 已冻结（单机版）。**
 > 变更必须由项目负责人同意，并同步更新本文件 + `docs/ALGORITHM.md` + 三份任务书。
-> 前端（A）与后端（B）**不得**自行增删字段、改名端点、变更编码方式。
+> 前端（A）与桌面壳（B）**不得**自行增删字段、改名 IPC 通道、变更编码方式。
 
 ---
 
@@ -10,187 +10,88 @@
 
 | 项 | 约定 |
 |---|---|
-| Base URL | `/api/v1` |
-| 内容类型 | `application/json; charset=utf-8` |
-| 字段命名 | **一律 camelCase**（Python 侧用 Pydantic `alias_generator` 映射，内部可 snake_case） |
 | 二进制编码 | **一律十六进制小写字符串（hex）**，全项目统一，不用 base64 |
-| 认证 | `Authorization: Bearer <jwt>` |
-| 时间 | ISO8601 UTC，例 `2026-10-20T12:00:00Z` |
-| 错误格式 | `{"error":{"code":"<CODE>","message":"<人类可读>","detail":{...}}}` |
-| 版本 | 响应头 `X-API-Version: 1` |
+| 文本编码 | UTF-8（无 BOM） |
+| 文件名 | `vault.cvault`；备份 `vault.cvault.bak`；临时 `vault.cvault.tmp` |
+| 单文件上限 | 20 MB |
+| 网络 | **无**。本版没有任何 API 端点、账号或同步 |
 
-**统一错误码**
+**保险箱文件位置**
 
-| code | HTTP | 含义 |
-|---|---|---|
-| `USER_NOT_FOUND` | 404 | 预登录查不到邮箱 |
-| `EMAIL_EXISTS` | 409 | 邮箱已注册 |
-| `INVALID_CREDENTIALS` | 401 | authHash 不匹配 |
-| `UNAUTHORIZED` | 401 | token 缺失/过期/无效 |
-| `VAULT_EMPTY` | 404 | 该用户还没有保险箱 |
-| `VERSION_CONFLICT` | 409 | 乐观并发冲突，`detail.currentVersion` 给出服务端当前版本 |
-| `VALIDATION_ERROR` | 422 | 请求体校验失败，`detail.fields` 给出字段错误 |
+```
+app.getPath('userData') / vault.cvault        // Windows: %APPDATA%\CipherVault\vault.cvault
+```
+
+**浏览器调试模式**
+
+`frontend` 独立运行时（无 Electron bridge），同一份 JSON 文本存入 `localStorage['ciphervault_vault_file']`；格式完全一致。
 
 ---
 
-## 1. 端点定义
+## 1. 文件格式 `ciphervault/vault`
 
-### 1.1 `GET /api/v1/health`
-
-无需认证。
+`vault.cvault` 是 UTF-8 JSON（写入时 2 空格缩进），结构固定：
 
 ```json
-// 200
-{ "status": "ok", "version": "0.1.0" }
-```
-
-### 1.2 `GET /api/v1/auth/kdf?email=<email>` — 预登录（取盐）
-
-前端必须先拿到 `kdfSalt` 才能在本地派生 `authHash`。
-
-```json
-// 200
-{ "kdfSalt": "a1b2c3d4e5f60718293a4b5c6d7e8f90", "kdfIters": 200000 }
-
-// 404
-{ "error": { "code": "USER_NOT_FOUND", "message": "用户不存在" } }
-```
-
-- `kdfSalt`：hex，16 字节 → 32 个 hex 字符
-- `kdfIters`：整数
-
-### 1.3 `POST /api/v1/auth/register`
-
-```json
-// 请求
 {
-  "email": "alice@example.com",
-  "authHash": "<hex, 32 字节 → 64 字符>",
-  "kdfSalt": "<hex, 16 字节 → 32 字符>",
-  "kdfIters": 200000
+  "format": "ciphervault/vault",
+  "formatVersion": 1,
+  "kdf": { "salt": "<hex, 16B → 32 字符>", "iters": 200000 },
+  "iv": "<hex, 12B → 24 字符>",
+  "ct": "<hex, AES-GCM 密文 ‖ 16B 认证标签>"
+}
+```
+
+| 字段 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| `format` | string | 必须等于 `"ciphervault/vault"` | 固定标识 |
+| `formatVersion` | number | 必须等于 `1` | 格式版本 |
+| `kdf.salt` | string | 32 位 hex | 创建保险箱时随机生成，此后不变 |
+| `kdf.iters` | number | 10000 ≤ iters ≤ 2000000 | 默认 200000 |
+| `iv` | string | 24 位 hex | **每次写入都必须重新随机生成** |
+| `ct` | string | 非空 hex | 密文与 GCM 认证标签 |
+
+**校验规则（读取时必须全部满足，否则拒绝加载）**
+
+1. 能 `JSON.parse`，且顶层是对象。
+2. `format === "ciphervault/vault"`。
+3. `formatVersion === 1`。
+4. `kdf.salt` 匹配 `/^[0-9a-f]{32}$/`；`kdf.iters` 为整数且在范围内。
+5. `iv` 匹配 `/^[0-9a-f]{24}$/`。
+6. `ct` 匹配 `/^[0-9a-f]+$/` 且长度非 0。
+7. 文件大小 ≤ 20 MB。
+
+> 桌面壳 `storage.cjs` 做 1–3 与基本类型校验；前端 `storage/vaultFile.ts` 做完整校验。两层都不可省略。
+
+---
+
+## 2. 明文文档 `VaultDoc`（只在内存，**永不落盘**）
+
+```ts
+type RuleName = 'letter' | 'number' | 'poem';
+
+interface EntryKeycard {
+  saltHex: string;   // 32 hex（16B）
+  ivHex: string;     // 32 hex（16B，注意不是 12B）
+  ctHex: string;
+  tagHex: string;    // 64 hex（32B）
+  iters: number;     // 钥匙卡固定 200000
+  display: string;   // 由 ctHex 编码得到的趣味显示串
 }
 
-// 201
-{ "userId": "9f1c2a7b3d4e5f60718293a4b5c6d7e8" }
-
-// 409
-{ "error": { "code": "EMAIL_EXISTS", "message": "该邮箱已注册" } }
-```
-
-- 服务器对 `authHash` 再做一次 `sha256(PEPPER + authHash)` 后落库，**不存原文**。
-- `email` 统一小写去空格后存储。
-
-### 1.4 `POST /api/v1/auth/login`
-
-```json
-// 请求
-{ "email": "alice@example.com", "authHash": "<hex, 64 字符>" }
-
-// 200
-{ "token": "<jwt>", "userId": "9f1c...", "expiresIn": 86400 }
-
-// 401
-{ "error": { "code": "INVALID_CREDENTIALS", "message": "邮箱或主密码不正确" } }
-```
-
-### 1.5 `GET /api/v1/vault` — 拉取密文
-
-需要 Bearer。
-
-```json
-// 200
-{ "version": 3, "iv": "<hex, 12 字节 → 24 字符>", "ct": "<hex>", "updatedAt": "2026-10-20T12:00:00Z" }
-
-// 404
-{ "error": { "code": "VAULT_EMPTY", "message": "尚未创建保险箱" } }
-```
-
-### 1.6 `PUT /api/v1/vault` — 上传密文（乐观并发）
-
-```json
-// 请求
-{ "baseVersion": 3, "iv": "<hex, 24 字符>", "ct": "<hex>" }
-
-// 200（version 自增）
-{ "version": 4, "updatedAt": "2026-10-20T12:05:00Z" }
-
-// 409
-{ "error": { "code": "VERSION_CONFLICT", "message": "版本冲突", "detail": { "currentVersion": 5 } } }
-```
-
-- 首次写入：`baseVersion = 0`，服务端从 `version = 1` 开始。
-- `baseVersion` 与库中 `version` 不一致即返回 409，不做自动合并。
-
----
-
-## 2. 数据模型
-
-```sql
-CREATE TABLE users (
-  id         TEXT    PRIMARY KEY,              -- uuid4 hex
-  email      TEXT    NOT NULL UNIQUE,          -- 小写
-  auth_hash  TEXT    NOT NULL,                 -- hex( sha256( PEPPER + authHashHex ) )
-  kdf_salt   TEXT    NOT NULL,                 -- hex, 16B
-  kdf_iters  INTEGER NOT NULL,                 -- 默认 200000
-  created_at TEXT    NOT NULL                  -- ISO8601 UTC
-);
-
-CREATE TABLE vaults (
-  user_id    TEXT    PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-  version    INTEGER NOT NULL DEFAULT 1,
-  iv         TEXT    NOT NULL,                 -- hex, 12B
-  ct         TEXT    NOT NULL,                 -- hex
-  updated_at TEXT    NOT NULL
-);
-```
-
-**服务器环境变量**（`backend/.env.example`）
-
-| 变量 | 说明 | 示例 |
-|---|---|---|
-| `DATABASE_URL` | SQLAlchemy URL | `sqlite:///./ciphervault.db` |
-| `JWT_SECRET` | JWT 签名密钥 | 必填，生产环境请随机生成 |
-| `JWT_TTL_SECONDS` | token 有效期 | `86400` |
-| `PEPPER` | authHash 落库前的服务端盐 | 必填，生产环境请随机生成 |
-| `CORS_ORIGINS` | 允许来源，逗号分隔 | `http://localhost:5173` |
-
----
-
-## 3. 前端必须实现的客户端签名（`frontend/src/api/client.ts`）
-
-```ts
-export interface KdfResponse { kdfSalt: string; kdfIters: number }
-export interface RegisterRequest { email: string; authHash: string; kdfSalt: string; kdfIters: number }
-export interface RegisterResponse { userId: string }
-export interface LoginResponse { token: string; userId: string; expiresIn: number }
-export interface VaultBlob { version: number; iv: string; ct: string; updatedAt: string }
-export interface VaultPutRequest { baseVersion: number; iv: string; ct: string }
-export interface ApiErrorBody { error: { code: string; message: string; detail?: unknown } }
-
-export function health(): Promise<{ status: string; version: string }>
-export function getKdf(email: string): Promise<KdfResponse>
-export function register(req: RegisterRequest): Promise<RegisterResponse>
-export function login(email: string, authHash: string): Promise<LoginResponse>
-export function getVault(token: string): Promise<VaultBlob | null>   // 404 → null
-export function putVault(token: string, req: VaultPutRequest): Promise<{ version: number; updatedAt: string }>
-```
-
-**约定**
-
-- `getVault` 遇到 `404 VAULT_EMPTY` 返回 `null`，其它错误抛 `ApiError`。
-- 所有非 2xx 统一抛 `ApiError { code, message, status, detail }`。
-- `VITE_API_BASE` 环境变量提供 base（默认 `http://localhost:8000/api/v1`；容器内为 `/api/v1`）。
-
----
-
-## 4. 内部数据形状（前后端各自内存中使用，**不经过网络**）
-
-```ts
 interface Entry {
-  id: string; name: string; account: string; password: string;
-  category: string; notes: string; fav: boolean; ts: number;
-  skin: { name: string; rules: Array<'letter' | 'number' | 'poem'> };
+  id: string;
+  name: string;
+  account: string;
+  password: string;
+  category: string;
+  notes: string;
+  fav: boolean;
+  ts: number;
+  skin: { name: string; rules: RuleName[] };
+  kc?: EntryKeycard;
 }
+
 interface VaultDoc {
   entries: Entry[];
   categories: string[];
@@ -198,14 +99,73 @@ interface VaultDoc {
 }
 ```
 
-> `VaultDoc` 序列化后由 `vaultKey` 加密，**只有密文上云**。
+- `VaultDoc` 序列化为 UTF-8 JSON 后由 `vaultKey` 加密，**只有密文写入文件**。
+- `kc` 为可选字段：保存条目时若密码非空则重新生成；密码清空则删除。
+
+---
+
+## 3. IPC 契约（preload 暴露给渲染进程）
+
+`window.ciphervault` 仅暴露以下白名单方法；主进程**不提供**任意路径读写。
+
+```ts
+interface CipherVaultBridge {
+  isDesktop: true;
+  vaultExists(): Promise<boolean>;
+  backupExists(): Promise<boolean>;
+  restoreBackup(): Promise<{ ok: boolean; code?: string; error?: string }>;
+  vaultPath(): Promise<string>;
+  readVault(): Promise<{ ok: boolean; text?: string; path?: string; code?: string; error?: string }>;
+  writeVault(text: string): Promise<{ ok: boolean; path?: string; code?: string; error?: string }>;
+  saveAs(text: string, suggestedName: string): Promise<{ ok: boolean; path?: string; code?: string; error?: string }>;
+  openVault(): Promise<{ ok: boolean; text?: string; name?: string; code?: string; error?: string }>;
+  onBeforeClose(callback: () => void): void;
+  confirmClose(): void;
+}
+```
+
+| 通道 | 方向 | 说明 |
+|---|---|---|
+| `vault:exists` | invoke | 文件是否存在 |
+| `vault:exists-backup` | invoke | 备份是否存在 |
+| `vault:restore-backup` | invoke | 备份覆盖正式文件 |
+| `vault:path` | invoke | 返回 `vault.cvault` 绝对路径 |
+| `vault:read` | invoke | 读取并校验，返回文本 |
+| `vault:write` | invoke | 校验后原子写入（`.tmp` → `.bak` → rename） |
+| `vault:save-as` | invoke | 弹出保存对话框，写用户选定路径 |
+| `vault:open` | invoke | 弹出打开对话框，读取用户选定文件 |
+| `app:before-close` | main → renderer | 关闭前请求落盘 |
+| `app:close-confirmed` | renderer → main | 落盘完成，允许退出 |
+
+**错误码**
+
+| code | 含义 |
+|---|---|
+| `ENOENT` | 文件不存在 |
+| `EINVALID` | 内容不是合法的 `ciphervault/vault` |
+| `ETOOLARGE` | 超过 20 MB |
+| `EIO` | 读写失败 |
+| `ECANCELED` | 用户取消对话框 |
+
+---
+
+## 4. 原子写入顺序（硬性）
+
+```
+1. 校验 text（≤20MB、JSON 可解析、format/formatVersion/iv/ct/kdf.salt 合法）
+2. 写 vault.cvault.tmp（权限 0600）
+3. 若 vault.cvault 存在 → 复制为 vault.cvault.bak（覆盖旧备份）
+4. rename(vault.cvault.tmp → vault.cvault)
+```
+
+任一步失败都必须返回错误，**不得**让正式文件处于半写状态。
 
 ---
 
 ## 5. 变更流程
 
-1. 任何字段/端点变更 → 先在群里提出，由负责人裁决。
-2. 负责人在本文件更新版本号（v1.1、v1.2…）与变更记录。
+1. 任何字段 / IPC 变更 → 先在群里提出，由负责人裁决。
+2. 负责人在本文件更新版本号（v2.1、v2.2…）与变更记录。
 3. 同步更新 `docs/ALGORITHM.md`（若涉及加密）与相关任务书。
 4. 三人拉取最新 `docs/` 后再改代码。
 
@@ -213,4 +173,5 @@ interface VaultDoc {
 
 | 版本 | 日期 | 内容 | 负责人 |
 |---|---|---|---|
-| v1.0 | 2026-10-20 | 首次冻结 | 负责人 |
+| v1.0 | 2026-10-20 | 首次冻结（HTTP API + 服务端数据模型） | 负责人 |
+| v2.0 | 2026-10-21 | 改为单机版：本地 `vault.cvault` 文件契约 + IPC；HTTP 端点作废（见 `archive/cloud-sync`） | 负责人 |

@@ -5,7 +5,7 @@ export function buildKeycardHtml(
   name: string,
   displayStr: string,
 ): string {
-  const p = JSON.stringify(payload);
+  const p = JSON.stringify(payload).replace(/</g, '\\u003c');
   return `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -90,7 +90,7 @@ button:hover{background:#1d4ed8}
       if (r==='letter') v=segs[i].charCodeAt(0)-65;
       else if (r==='number') v=parseInt(segs[i],10)-10;
       else v=poems.indexOf(segs[i]);
-      if (v<0||v>15) throw new Error('\\\\u7b2c'+(i+1)+'\\\\u6bb5\\\\u65e0\\\\u6cd5\\\\u8fd8\\\\u539f');
+      if (v<0||v>15) throw new Error('第 '+(i+1)+' 段无法还原');
       hex+=v.toString(16);
     }
     return hex;
@@ -120,7 +120,8 @@ button:hover{background:#1d4ed8}
       var pt=new Uint8Array(ct.length);
       for (var i=0;i<ct.length;i++) pt[i]=ct[i]^ks[i];
       var entryPw = b2t(pt);
-      resEl.innerHTML = '<strong>原始密码：</strong>' + entryPw.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '<br><strong>趣味显示：</strong>' + PAYLOAD.display.replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      resEl.textContent = '原始密码：' + entryPw + '\\n趣味显示：' + PAYLOAD.display;
+      resEl.style.whiteSpace = 'pre-wrap';
       resEl.style.display = 'block';
     } catch(e) {
       errEl.textContent = e.message || '解密失败';

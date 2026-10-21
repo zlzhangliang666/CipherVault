@@ -1,17 +1,16 @@
 import { create } from 'zustand';
+import { useVaultStore } from './vaultStore';
 
 interface SessionState {
   masterPassword: string | null;
-  token: string | null;
   vaultKey: Uint8Array | null;
-  userId: string | null;
-  email: string | null;
+  saltHex: string | null;
+  iters: number;
   setSession: (data: {
     masterPassword: string;
-    token: string;
     vaultKey: Uint8Array;
-    userId: string;
-    email: string;
+    saltHex: string;
+    iters: number;
   }) => void;
   lock: () => void;
   isLocked: () => boolean;
@@ -19,27 +18,28 @@ interface SessionState {
 
 export const useSession = create<SessionState>((set, get) => ({
   masterPassword: null,
-  token: null,
   vaultKey: null,
-  userId: null,
-  email: null,
+  saltHex: null,
+  iters: 0,
 
   setSession: (data) =>
     set({
       masterPassword: data.masterPassword,
-      token: data.token,
       vaultKey: data.vaultKey,
-      userId: data.userId,
-      email: data.email,
+      saltHex: data.saltHex,
+      iters: data.iters,
     }),
 
-  lock: () =>
+  lock: () => {
     set({
       masterPassword: null,
-      token: null,
       vaultKey: null,
-      // keep userId/email for relogin UX if needed
-    }),
+      saltHex: null,
+      iters: 0,
+    });
+    // 锁定后立刻从内存中清除全部明文条目
+    useVaultStore.getState().clear();
+  },
 
   isLocked: () => get().vaultKey === null,
 }));

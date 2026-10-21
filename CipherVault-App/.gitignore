@@ -17,6 +17,15 @@ dist/
 coverage/
 *.tsbuildinfo
 
+# ---- Electron 构建产物 ----
+desktop/renderer/
+desktop/release/
+
+# ---- 本地保险箱数据（含密文，仍不应提交）----
+*.cvault
+*.cvault.bak
+*.cvault.tmp
+
 # ---- 环境与密钥（严禁提交）----
 .env
 .env.local

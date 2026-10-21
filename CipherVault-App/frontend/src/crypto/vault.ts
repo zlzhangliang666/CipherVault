@@ -1,5 +1,5 @@
 import { hexToBytes, bytesToHex, textToBytes, bytesToText } from '../lib/hex';
-import type { VaultDoc } from '../api/types';
+import type { VaultDoc } from '../types';
 
 export async function encryptVault(
   vaultKey: Uint8Array,

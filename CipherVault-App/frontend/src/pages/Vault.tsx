@@ -1,7 +1,8 @@
 import { useState, useMemo, useCallback } from 'react';
-import type { Entry } from '../api/types';
+import type { Entry } from '../types';
 import { useVaultStore } from '../state/vaultStore';
 import { useSession } from '../state/session';
+import { createEntryKeycard } from '../crypto/keycard';
 import { Sidebar } from '../components/Sidebar';
 import { Toolbar } from '../components/Toolbar';
 import { EntryCard } from '../components/EntryCard';
@@ -23,6 +24,7 @@ export function Vault() {
   const [newCatOpen, setNewCatOpen] = useState(false);
   const [newCatName, setNewCatName] = useState('');
   const [keycardEntry, setKeycardEntry] = useState<Entry | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const filtered = useMemo(() => {
     let list = [...entries];
@@ -56,18 +58,34 @@ export function Vault() {
   }, []);
 
   const handleSave = useCallback(
-    (entry: Entry) => {
-      if (isNewEntry) {
-        addEntry(entry);
-        toast('条目已创建', 'success');
-      } else {
-        updateEntry(entry.id, entry);
-        toast('条目已更新', 'success');
+    async (entry: Entry) => {
+      if (saving) return;
+      setSaving(true);
+      try {
+        const next: Entry = { ...entry, ts: Date.now() };
+        if (entry.password && masterPassword) {
+          // 趣味显示串由**密文**生成，绝不编码明文
+          next.kc = await createEntryKeycard(masterPassword, entry.password, entry.skin.rules);
+        } else {
+          delete next.kc;
+        }
+
+        if (isNewEntry) {
+          addEntry(next);
+          toast('条目已创建', 'success');
+        } else {
+          updateEntry(entry.id, next);
+          toast('条目已更新', 'success');
+        }
+        setEditingEntry(null);
+        setIsNewEntry(false);
+      } catch (e) {
+        toast(`保存失败：${(e as Error).message}`, 'error');
+      } finally {
+        setSaving(false);
       }
-      setEditingEntry(null);
-      setIsNewEntry(false);
     },
-    [isNewEntry, addEntry, updateEntry, toast],
+    [isNewEntry, addEntry, updateEntry, toast, masterPassword, saving],
   );
 
   const handleDelete = useCallback(
@@ -85,7 +103,7 @@ export function Vault() {
   }, []);
 
   return (
-    <div style={{ display: 'flex', height: '100vh', background: 'var(--bg)' }}>
+    <div style={{ display: 'flex', height: '100%', minHeight: 0, background: 'var(--bg)' }}>
       <Sidebar
         categories={categories}
         activeCategory={activeCategory}

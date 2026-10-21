@@ -1,0 +1,36 @@
+# ---- 通用 ----
+.DS_Store
+Thumbs.db
+*.log
+
+# ---- Node ----
+node_modules/
+dist/
+.vite/
+coverage/
+*.tsbuildinfo
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# ---- 环境与密钥（严禁提交）----
+.env
+.env.local
+.env.*.local
+
+# ---- 本地保险箱数据 ----
+*.cvault
+*.cvault.bak
+*.cvault.tmp
+*.db
+*.sqlite
+
+# ---- 编辑器 ----
+.idea/
+.vscode/

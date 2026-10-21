@@ -47,7 +47,6 @@ from .stream import (
 from .vault import (
     VAULT_IV_LEN,
     VAULT_TAG_LEN,
-    validate_put_request,
     validate_vault_blob,
 )
 
@@ -85,6 +84,5 @@ __all__ = [
     "kc_decrypt",
     "kc_encrypt",
     # 保险箱 blob 校验（Python 侧不做真实 AES）
-    "validate_put_request",
     "validate_vault_blob",
 ]

@@ -1,7 +1,8 @@
 # 加密算法规格（冻结）
 
-> **状态：v1.0 已冻结。** 前端（TS/WebCrypto）与核心库（Python stdlib）必须逐字实现本文件。
+> **状态：v2.0 已冻结（单机版）。** 前端（TS/WebCrypto）与核心库（Python stdlib）必须逐字实现本文件。
 > 验收基准：`packages/ciphervault-core/vectors.json`（跨语言测试向量）。
+> v1.0 的「服务端零知识同步」相关描述已随 `backend/` 归档到分支 `archive/cloud-sync`。
 
 **统一编码：所有二进制一律用十六进制小写字符串（hex），全项目统一。**
 
@@ -12,15 +13,16 @@
 ```
 dk = PBKDF2-HMAC-SHA256( password = UTF8(主密码), salt = kdfSalt(16B), iterations = kdfIters, dkLen = 64 )
 
-vaultKey = dk[0:32]        // AES-GCM-256 密钥，仅存于客户端内存，绝不上传
-authHash = hex(dk[32:64])  // 64 个 hex 字符，用于登录校验，可上传
+vaultKey = dk[0:32]        // AES-GCM-256 密钥，仅存于渲染进程内存，绝不落盘
+authHash = hex(dk[32:64])  // 单机版运行时不再使用，仅为跨语言向量兼容保留
 ```
 
-- `kdfSalt`：注册时客户端生成，`crypto.getRandomValues(new Uint8Array(16))` / `os.urandom(16)`
-- `kdfIters`：默认 **200000**，注册后不可变更（改主密码流程本版不做）
-- 一次 PBKDF2 同时得到「加密密钥」与「登录校验值」，二者由同一 64 字节输出切分而来，互不干扰
+- `kdfSalt`：创建保险箱时客户端生成，`crypto.getRandomValues(new Uint8Array(16))` / `os.urandom(16)`
+- `kdfIters`：默认 **200000**，创建后不可变更（改主密码流程本版不做）
+- 一次 PBKDF2 同时得到两段输出，二者互不干扰
+- `kdfSalt` / `kdfIters` 与密文一起写入 `vault.cvault`（见 `docs/CONTRACTS.md`）；`vaultKey` 不落盘
 
-**服务器只存** `kdfSalt`、`kdfIters` 与 `sha256(PEPPER + authHash)`；**永不接触主密码与 vaultKey**。
+> 单机版没有服务器，`authHash` 不参与任何校验；它仍然保留在规格与测试向量中，用来验证「同一份 PBKDF2 输出在不同语言下逐字节一致」。
 
 ---
 
@@ -30,12 +32,14 @@ authHash = hex(dk[32:64])  // 64 个 hex 字符，用于登录校验，可上传
 pt = UTF8(JSON.stringify(VaultDoc))          // 明文只在内存
 iv = 12B 随机                                  // crypto.getRandomValues / os.urandom
 ct = AES-GCM-256(key = vaultKey, iv, pt)      // WebCrypto 输出 = 密文 ‖ 16B 认证标签
-上传 = { iv: hex(iv), ct: hex(ct), baseVersion }
+落盘 = { format:"ciphervault/vault", formatVersion:1,
+         kdf:{salt:hex(kdfSalt), iters:kdfIters}, iv:hex(iv), ct:hex(ct) }
 ```
 
-- **只有前端解密保险箱**；后端与核心库都不解密（后端只见密文 blob）。
-- `iv` 每次上传都必须重新随机生成，禁止复用。
+- **只有渲染进程解密保险箱**；Electron 主进程与核心库都不解密。
+- `iv` 每次写入都必须重新随机生成，禁止复用。
 - 解密失败（标签不匹配，通常是主密码错误）→ 前端提示「主密码不正确或数据已损坏」。
+- 落盘文件字段与校验规则以 `docs/CONTRACTS.md` 为准。
 
 ---
 
@@ -82,6 +86,11 @@ tag    = HMAC-SHA256(MAC, iv ‖ ct)
 ## 4. 趣味皮肤（编码密文，不影响安全性）
 
 **作用对象**：密文的 hex 字符串（即 `ctHex`）。逐字符替换，得到「好看的显示串」。
+
+> **硬性约束：`display` 必须且只能由 `ctHex` 编码得到。**
+> 严禁把条目明文（或其 hex）交给 `encodeToken`，否则趣味显示会直接泄露密码。
+> 条目保存时生成 `EntryKeycard { saltHex, ivHex, ctHex, tagHex, iters, display }`；
+> 换皮肤只重算 `display`，`ctHex` / `tagHex` 不变。
 
 ### 4.1 常量（必须逐字照抄）
 
@@ -151,6 +160,7 @@ decodeToken(display, rules):
 - **只允许** `hashlib`、`hmac`、`json`、`sys`、`getpass` 等标准库；**不得** import `cryptography` / `pycryptodome`
 - 文件首行 `# -*- coding: utf-8 -*-`，并在 `main()` 内 `sys.stdout.reconfigure(encoding="utf-8")`（Windows 控制台必需）
 - 载荷以 JSON 字面量内嵌在文件里，**无需外部依赖、无需联网、脱离本项目可运行**
+- 必须提供可导入函数 `kc_decrypt(master_password, payload=None) -> str`（别名 `decrypt`），主密码错误时抛 `ValueError`，便于其它脚本调用
 - 输出必须同时给出「原始密码」与「趣味皮肤显示串」
 
 **HTML 钥匙卡硬性要求**
@@ -239,12 +249,14 @@ async function hmac(keyBytes: Uint8Array, msg: Uint8Array) {
 
 1. 所有涉及 `tag` 的比较必须**恒定时间**（`hmac.compare_digest` / 逐字节异或）。
 2. 任何日志、错误上报、埋点都**不得**包含主密码、条目密码、`vaultKey`、`authHash` 原文。
-3. 剪贴板复制后应定时清空（默认 30 秒，见设置项）。
+3. 若实现「复制密码」功能，复制后应定时清空剪贴板（字段 `clipboardClearSec` 默认 30，本版尚未实现自动清空）。
 4. `iv`、`salt` 一律用密码学随机源，禁止使用时间戳、`Math.random()`。
-5. 前端在离开页面 / 超时（默认 5 分钟）后必须清除内存中的 `vaultKey` 与明文。
+5. 解锁超时（默认 5 分钟）或手动锁定后，必须清除内存中的 `vaultKey` 与全部明文（`useSession.lock()` 同时调用 `vaultStore.clear()`）。
+6. 渲染进程不得发起任何网络请求；Electron 必须保持 `contextIsolation:true`、`nodeIntegration:false`、`sandbox:true`，并阻止导航与新窗口。
 
 **变更记录**
 
 | 版本 | 日期 | 内容 | 负责人 |
 |---|---|---|---|
 | v1.0 | 2026-10-20 | 首次冻结（含常量全文与向量格式） | 负责人 |
+| v2.0 | 2026-10-21 | 单机版：去掉服务端与 authHash 用途；补充 `vault.cvault` 文件格式、`display` 必须编码 `ctHex`、Python 钥匙卡 `kc_decrypt` 接口 | 负责人 |

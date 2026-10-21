@@ -1,11 +1,9 @@
 import { useState, useEffect } from 'react';
-import type { Entry } from '../api/types';
+import type { Entry } from '../types';
 import { scorePassword } from '../crypto/strength';
 import { StrengthMeter } from './StrengthMeter';
 import { generatePassword } from '../crypto/generator';
-import { BUILTIN_SKINS, encodeToken } from '../crypto/skin';
-
-type SkinRuleName = 'letter' | 'number' | 'poem';
+import { BUILTIN_SKINS } from '../crypto/skin';
 
 interface EntryDrawerProps {
   entry: Entry | null;
@@ -37,20 +35,14 @@ export function EntryDrawer({ entry, categories, onSave, onDelete, onClose, open
   }, [entry]);
 
   const strength = scorePassword(draft.password);
-  const display = encodeToken(
-    draft.password
-      .split('')
-      .map((c) => c.charCodeAt(0).toString(16).padStart(2, '0'))
-      .join(''),
-    draft.skin.rules as SkinRuleName[],
-  );
+  const display = draft.kc?.display ?? '';
 
   const handleSave = () => {
     onSave({ ...draft, ts: Date.now() });
   };
 
   const handleGenPw = () => {
-    setDraft((d) => ({ ...d, password: generatePassword() }));
+    setDraft((d) => ({ ...d, password: generatePassword(), kc: undefined }));
   };
 
   return (
@@ -97,7 +89,9 @@ export function EntryDrawer({ entry, categories, onSave, onDelete, onClose, open
         <div style={{ display: 'flex', gap: 'var(--sp-sm)' }}>
           <input
             value={draft.password}
-            onChange={(e) => setDraft((d) => ({ ...d, password: e.target.value }))}
+            onChange={(e) =>
+              setDraft((d) => ({ ...d, password: e.target.value, kc: undefined }))
+            }
             style={{ ...inputStyle, flex: 1 }}
             placeholder="输入或生成密码"
           />
@@ -110,7 +104,7 @@ export function EntryDrawer({ entry, categories, onSave, onDelete, onClose, open
 
         {draft.password && (
           <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--dim)', padding: '6px 8px', background: 'var(--surface-2)', borderRadius: 'var(--r-sm)', wordBreak: 'break-all', lineHeight: 1.6 }}>
-            {display}
+            {display || '保存后生成趣味显示（由密文编码，不含明文）'}
           </div>
         )}
 
@@ -130,7 +124,8 @@ export function EntryDrawer({ entry, categories, onSave, onDelete, onClose, open
           value={draft.skin.name}
           onChange={(e) => {
             const skin = BUILTIN_SKINS.find((s) => s.name === e.target.value);
-            if (skin) setDraft((d) => ({ ...d, skin: { name: skin.name, rules: skin.rules } }));
+            if (skin)
+              setDraft((d) => ({ ...d, skin: { name: skin.name, rules: skin.rules }, kc: undefined }));
           }}
           style={inputStyle}
         >

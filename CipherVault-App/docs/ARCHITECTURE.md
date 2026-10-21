@@ -1,72 +1,75 @@
-# 架构与安全模型
+# 架构与安全模型（单机版）
 
-> 维护者：项目负责人 ｜ 状态：v1.0
+> 维护者：项目负责人 ｜ 状态：v2.0（单机离线）
+> v1.0 的「前后端分离 + 零知识同步」方案已归档到分支 `archive/cloud-sync`，不再维护。
 
 ## 1. 产品目标
 
-把「密码保险箱」从单文件原型做成**可部署、可多人协作、可长期演进**的正式产品，同时保留原型最核心的两个卖点：
+把「密码保险箱」做成**可安装、可离线使用、可长期演进**的桌面产品，同时保留原型最核心的两个卖点：
 
 1. **强加密打底**（真实安全性）
 2. **趣味皮肤外壳 + 离线钥匙卡**（好玩、可分享、可带走）
 
-## 2. 安全模型：零知识
+## 2. 安全模型：单机离线
 
 **信任边界**
 
 ```
-        用户设备（可信）                         服务器（不可信）
-┌──────────────────────────────┐        ┌──────────────────────────────┐
-│  主密码                       │        │  users 表                     │
-│   ├─ 派生 vaultKey (内存)     │        │   · email                     │
-│   ├─ 派生 authHash ───────────┼──上传──▶│   · sha256(PEPPER+authHash)   │
-│   └─ vaultKey 加密明文 ───────┼──上传──▶│   · kdfSalt / kdfIters        │
-│                               │        │  vaults 表                    │
-│  解密后的明文（仅内存）        │◀─下载──┼   · iv / ct（密文 blob）      │
-└──────────────────────────────┘        └──────────────────────────────┘
+                本机（唯一可信域）
+┌────────────────────────────────────────────────────────────┐
+│  Electron renderer（React）                                 │
+│   主密码 ──► PBKDF2 ──► vaultKey(内存)                       │
+│   明文 ──► AES-GCM-256(vaultKey) ──► 密文 ──► IPC            │
+│                                                            │
+│  Electron main（storage.cjs）                               │
+│   只做文件读写与原子替换，不接触主密码 / vaultKey / 明文      │
+└──────────────────────────────┬─────────────────────────────┘
+                               ▼
+                  vault.cvault（磁盘上的密文）
 ```
 
-**三条铁律**
+**四条铁律**
 
 | # | 规则 | 原因 |
 |---|---|---|
-| R1 | 主密码、明文、`vaultKey` **绝不允许**出现在任何 HTTP 请求体 / URL / 日志中 | 服务器被攻破也不泄露密码 |
-| R2 | 服务器只存 `authHash` 的再哈希（`sha256(PEPPER + authHash)`）与密文 blob | 数据库泄露不能直接登录，也不能解密 |
-| R3 | 所有加密/解密逻辑只在 `frontend/` 与 `packages/ciphervault-core/` 中实现，且必须与 `docs/ALGORITHM.md` 完全一致 | 避免两套实现产生不兼容密文 |
+| R1 | 应用**不得发起任何网络请求**（无账号、无同步、无遥测） | 攻击面最小化，符合「单机软件」定位 |
+| R2 | 主密码、明文、`vaultKey` **只存在于渲染进程内存**；锁定时立即清空 | 落盘 / 日志 / 崩溃转储都可能泄露 |
+| R3 | 主进程只接收「已经加密好的整库文本」，且写入前做格式校验 | 主进程被攻破也拿不到密钥 |
+| R4 | 加密实现必须与 `docs/ALGORITHM.md` 完全一致；趣味显示串只能编码 `ctHex` | 避免两套实现不兼容、避免明文借皮肤泄露 |
 
 **已知取舍（本版明确不做）**
 
-- 不做服务端解密、不做「主密码找回」（找回等于把主密码交给服务器）。
-- 不做双人密钥分片、谜面解锁、蜜罐假库（列入后续里程碑）。
-- 不做端到端分享；共享条目需要先把密钥交给对方，后续单独设计。
+- 不做主密码找回（找回等于把主密码交给第三方）。
+- 不做多设备同步、账号体系、云备份。
+- 不做端到端分享；钥匙卡是唯一的「带得走」形式。
+- 不做双人密钥分片、谜面解锁、蜜罐假库（后续里程碑）。
 
 ## 3. 组件与职责
 
 | 组件 | 技术 | 职责 |
 |---|---|---|
-| `frontend/` | React 18 + TypeScript + Vite + zustand | 全部加密、UI、钥匙卡生成、与后端同步 |
-| `backend/` | Python 3.11 + FastAPI + SQLAlchemy + SQLite + JWT | 账号、登录校验、密文 blob 存储与版本控制 |
-| `packages/ciphervault-core/` | Python 3.11（纯标准库实现加密） | 算法规格落地、跨语言测试向量、离线解密 CLI |
-| `docker/` + `docker-compose.yml` | Docker | 一键起前后端 |
-| `.github/workflows/ci.yml` | GitHub Actions | 三组件各自独立 CI |
+| `frontend/` | React 18 + TypeScript + Vite + zustand | 全部加解密、UI、自动保存、钥匙卡生成 |
+| `desktop/` | Electron 33 + electron-builder | 窗口、单实例、受限 IPC、本地文件原子写、打包 |
+| `packages/ciphervault-core/` | Python 3.11（纯标准库） | 算法规格落地、跨语言测试向量、离线解密 CLI |
+| `.github/workflows/ci.yml` | GitHub Actions | core / frontend / desktop / contracts 四个 job |
 
 ## 4. 关键数据流
 
-**注册**
-1. 前端生成随机 `kdfSalt`(16B)，由主密码派生 `dk`(64B) → `vaultKey`、`authHash`
-2. 上报 `{email, authHash, kdfSalt, kdfIters}`；服务器存 `authHash` 的再哈希
-3. 前端用 `vaultKey` 加密空保险箱，`PUT /vault` 首次写入
+**首次创建（Onboarding）**
+1. 用户设置主密码（≥6 位，两次一致），前端生成随机 `salt`(16B)。
+2. `PBKDF2(master, salt, 200000, 64B)` → `vaultKey = dk[0:32]`。
+3. 用 `vaultKey` 加密空保险箱 → `vault.cvault` 首次落盘（`kdf.salt` / `kdf.iters` 随文件保存）。
+4. 主密码与 `vaultKey` 仅保存在内存（`useSession`）。
 
-**登录**
-1. 前端 `GET /auth/kdf?email=` 取回 `kdfSalt`/`kdfIters`
-2. 本地重新派生 `authHash` → `POST /auth/login` → 拿到 JWT
-3. 本地用同一主密码派生 `vaultKey`，`GET /vault` 拉密文并在内存中解密
-
-**同步**
-- 客户端把整库加密成一个 blob 上传，`baseVersion` 做乐观并发控制，冲突返回 `409`，前端提示用户选择保留哪一份。
+**日常使用**
+1. 解锁：读 `vault.cvault` → 校验格式 → 用文件里的 `salt`/`iters` + 输入的主密码派生 `vaultKey` → AES-GCM 解密。
+2. 编辑：每次 CRUD 后 400ms 防抖自动加密并原子写回（`.tmp` → `.bak` → rename）。
+3. 锁定：先 flush 一次，再清空 `vaultKey` 与所有明文状态。
+4. 自动锁定：默认 5 分钟无操作；关闭窗口前由主进程发起握手，渲染进程落盘后确认退出。
 
 **钥匙卡**
 - 前端用「主密码」派生密钥，加密「条目密码」，生成 `keycard_<名称>.html` 与 `ciphervault_keycard_<名称>.py`；
-- 两者都用同一套 `PBKDF2 + HMAC-SHA256 流加密 + HMAC 校验`，因此可互相验证、且可脱离本项目运行（详见 `docs/ALGORITHM.md`）。
+- 两者都用同一套 `PBKDF2 + HMAC-SHA256 流加密 + HMAC 校验`，可互相验证、可脱离本项目运行（详见 `docs/ALGORITHM.md`）。
 
 ## 5. 目录与归属（零重叠）
 
@@ -74,24 +77,24 @@
 |---|---|---|
 | `docs/`、根 `README.md`、`.gitignore` | 负责人 | 只读 |
 | `frontend/**` | A | 只读 |
-| `backend/**` | B | 只读 |
-| `packages/**`、`tools/**` | C | 只读 |
-| `docker/**`、`docker-compose.yml`、`Makefile` | C | 只读 |
+| `desktop/**` | B | 只读 |
+| `packages/**`、`tools/**`、`Makefile` | C | 只读 |
 | `.github/workflows/ci.yml`（位于**仓库根**） | C | 只读 |
 
 > 契约与算法若要变更，必须由负责人在 `docs/` 中更新并通知三人，禁止在代码里「各自解释」。
 
-## 6. 部署拓扑
+## 6. 构建与发布
 
-- 开发：后端 8000（`uvicorn --reload`）、前端 5173（Vite dev server）
-- 容器：`docker compose up --build` → `web`(nginx, 5173→80) 反向代理 `/api/` 到 `api`(8000)
-- 数据：SQLite 文件挂载在 volume `vaultdata`
+- 开发：`cd desktop && npm run dev`（Vite 5173 + Electron 自动加载）
+- 构建：`npm run build:renderer` → `desktop/renderer/`
+- 打包：`npm run dist` → `desktop/release/CipherVault-Setup-1.0.0.exe`、`CipherVault-Portable-1.0.0.exe`
+- 数据：`app.getPath('userData')/vault.cvault`（Windows 为 `%APPDATA%\CipherVault\`）
 
 ## 7. 里程碑
 
 | 阶段 | 内容 | 验收 |
 |---|---|---|
-| M1 | 三组件骨架可跑通、CI 全绿、向量跨语言一致 | 前端能注册/登录/存入第一条密码并同步成功 |
+| M1 | 桌面壳 + 本地建库/解锁 + 自动保存 | 断网环境下可创建、保存、重启后解锁 |
 | M2 | 钥匙卡双格式导出、设置项、自动锁定 | 导出的 `.py` 能独立还原密码 |
-| M3 | 冲突处理、导入导出备份、打包部署 | `docker compose up` 一键可用 |
+| M3 | 加密备份导入导出、备份恢复、安装包与便携版 | `npm run dist` 产出两个 `.exe` |
 | 后续 | 密钥分片（三人各持一片）、谜面解锁、蜜罐假库、皮肤市场 | — |
