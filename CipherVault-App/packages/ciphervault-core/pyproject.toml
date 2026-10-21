@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ciphervault-core"
+version = "0.1.0"
+description = "CipherVault 加密核心库：PBKDF2 密钥派生、钥匙卡载荷加解密、趣味皮肤编码与跨语言测试向量校验 CLI"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+# 运行时零第三方依赖：加密只用 hashlib / hmac / secrets 等标准库（见 docs/ALGORITHM.md 第 7 节）
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest==8.3.3", "ruff==0.6.9"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ciphervault_core"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
