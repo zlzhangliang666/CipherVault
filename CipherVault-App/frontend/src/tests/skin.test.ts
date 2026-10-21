@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { encodeToken, decodeToken, SEP } from '../crypto/skin';
+import { encodeToken, decodeToken, normalizeRules, SEP } from '../crypto/skin';
 
 describe('encodeToken / decodeToken', () => {
   it('letter skin roundtrip', () => {
@@ -43,5 +43,24 @@ describe('encodeToken / decodeToken', () => {
     const rules: Array<'letter' | 'number' | 'poem'> = ['letter', 'poem', 'number'];
     const display = encodeToken(ctHex, rules);
     expect(decodeToken(display, rules)).toBe(ctHex);
+  });
+
+  it('custom per-position rules roundtrip', () => {
+    const ctHex = '0123456789abcdef';
+    const rules: Array<'letter' | 'number' | 'poem'> = ['poem', 'letter', 'number', 'number'];
+    const display = encodeToken(ctHex, rules);
+    const segs = display.split(SEP);
+    expect(segs[0]).toBe('床前明月光');
+    expect(segs[1]).toBe('B');
+    expect(segs[2]).toBe('12');
+    expect(segs[3]).toBe('13');
+    expect(segs[4]).toBe('春眠不觉晓');
+    expect(decodeToken(display, rules)).toBe(ctHex);
+  });
+
+  it('normalizeRules falls back to letter for empty/invalid input', () => {
+    expect(normalizeRules([])).toEqual(['letter']);
+    expect(normalizeRules(['poem', 'bad'])).toEqual(['poem']);
+    expect(normalizeRules('poem')).toEqual(['letter']);
   });
 });

@@ -35,9 +35,11 @@ PAYLOAD = ${p}
 
 POEMS = ${poems}
 SEP = "\\u00b7"
+RULES = PAYLOAD.get("rules") or ["letter"]
 
 
-def decode_display(display, rules):
+def decode_display(display, rules=None):
+    rules = rules or RULES
     segs = display.split(SEP)
     h = ""
     for i, seg in enumerate(segs):

@@ -9,6 +9,8 @@ export interface KeycardPayload {
   iters: number;
   display: string;
   skinName: string;
+  /** 趣味显示的逐位规则，供导出的脚本还原显示串 */
+  rules?: Array<'letter' | 'number' | 'poem'>;
   entryName?: string;
 }
 

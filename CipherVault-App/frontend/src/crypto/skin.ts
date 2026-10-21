@@ -19,7 +19,15 @@ export const POEMS = [
   '粒粒皆辛苦',
 ];
 
-type RuleName = 'letter' | 'number' | 'poem';
+export type RuleName = 'letter' | 'number' | 'poem';
+
+export const RULE_LABELS: Record<RuleName, string> = {
+  letter: '英文字母 A–P',
+  number: '数字 10–25',
+  poem: '古诗片段',
+};
+
+export const CUSTOM_SKIN_NAME = '自定义皮肤';
 
 interface SkinRule {
   encode: (n: number) => string;
@@ -62,21 +70,33 @@ export const BUILTIN_SKINS: { name: string; rules: RuleName[] }[] = [
   { name: '混合皮肤', rules: ['letter', 'poem', 'number'] },
 ];
 
+export function isRuleName(v: string): v is RuleName {
+  return v === 'letter' || v === 'number' || v === 'poem';
+}
+
+export function normalizeRules(input: unknown): RuleName[] {
+  if (!Array.isArray(input)) return ['letter'];
+  const out = input.filter((v): v is RuleName => typeof v === 'string' && isRuleName(v));
+  return out.length > 0 ? out : ['letter'];
+}
+
 export function encodeToken(ctHex: string, ruleNames: RuleName[]): string {
+  const rulesList = normalizeRules(ruleNames).map((n) => rules[n]);
   const out: string[] = [];
   for (let i = 0; i < ctHex.length; i++) {
     const n = parseInt(ctHex[i], 16);
-    const rule = rules[ruleNames[i % ruleNames.length]];
+    const rule = rulesList[i % rulesList.length];
     out.push(rule.encode(n));
   }
   return out.join(SEP);
 }
 
 export function decodeToken(display: string, ruleNames: RuleName[]): string {
+  const rulesList = normalizeRules(ruleNames).map((n) => rules[n]);
   const segs = display.split(SEP);
   let hex = '';
   for (let i = 0; i < segs.length; i++) {
-    const rule = rules[ruleNames[i % ruleNames.length]];
+    const rule = rulesList[i % rulesList.length];
     const v = rule.decode(segs[i]);
     if (v < 0 || v > 15) throw new Error(`第 ${i + 1} 段无法还原`);
     hex += v.toString(16);

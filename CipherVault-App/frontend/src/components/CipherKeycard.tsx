@@ -34,6 +34,7 @@ export function CipherKeycard({ entry, masterPassword, onClose }: CipherKeycardP
       const payload: KeycardPayload = {
         ...payloadKc,
         skinName: entry.skin.name,
+        rules: entry.skin.rules,
         entryName: entry.name,
       };
 
