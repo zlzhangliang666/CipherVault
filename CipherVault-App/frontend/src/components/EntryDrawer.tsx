@@ -1,65 +1,92 @@
 import { useState, useEffect } from 'react';
-import type { Entry } from '../types';
-import { scorePassword } from '../crypto/strength';
-import { StrengthMeter } from './StrengthMeter';
-import { generatePassword } from '../crypto/generator';
+import type { Entry, EntryValue } from '../types';
+import { newId } from '../lib/id';
+import { ValueEditor } from './ValueEditor';
 import {
-  BUILTIN_SKINS,
-  CUSTOM_SKIN_NAME,
-  RULE_LABELS,
-  normalizeRules,
-  type RuleName,
+  CUSTOM_ALPHABET_SIZE,
+  DEFAULT_CUSTOM_ALPHABET,
+  customAlphabetError,
 } from '../crypto/skin';
 
 interface EntryDrawerProps {
   entry: Entry | null;
   categories: string[];
+  masterPassword: string | null;
   onSave: (entry: Entry) => void;
   onDelete: (id: string) => void;
   onClose: () => void;
-  openKeycard: (entry: Entry) => void;
+  openKeycard: (value: EntryValue, entryName: string) => void;
 }
 
-const emptyEntry: Entry = {
-  id: '',
-  name: '',
-  account: '',
-  password: '',
-  category: '通用',
-  notes: '',
-  fav: false,
-  ts: Date.now(),
-  skin: { name: '字母皮肤', rules: ['letter'] },
-};
+function createEmptyValue(label = ''): EntryValue {
+  return {
+    id: newId(),
+    label,
+    value: '',
+    skin: { name: '字母皮肤', rules: ['letter'] },
+  };
+}
 
-export function EntryDrawer({ entry, categories, onSave, onDelete, onClose, openKeycard }: EntryDrawerProps) {
-  const [draft, setDraft] = useState<Entry>(entry ?? { ...emptyEntry, id: '' });
+function createEmptyEntry(): Entry {
+  return {
+    id: '',
+    name: '',
+    account: '',
+    category: '通用',
+    notes: '',
+    fav: false,
+    ts: Date.now(),
+    values: [createEmptyValue('密码')],
+  };
+}
+
+function alphabetOf(value: EntryValue): string[] {
+  return Array.from(
+    { length: CUSTOM_ALPHABET_SIZE },
+    (_, i) => value.skin.custom?.[i] ?? DEFAULT_CUSTOM_ALPHABET[i],
+  );
+}
+
+export function EntryDrawer({
+  entry,
+  categories,
+  masterPassword,
+  onSave,
+  onDelete,
+  onClose,
+  openKeycard,
+}: EntryDrawerProps) {
+  const [draft, setDraft] = useState<Entry>(entry ?? createEmptyEntry());
   const isNew = !entry;
 
   useEffect(() => {
-    setDraft(entry ?? { ...emptyEntry, id: '' });
+    setDraft(entry ?? createEmptyEntry());
   }, [entry]);
 
-  const strength = scorePassword(draft.password);
-  const display = draft.kc?.display ?? '';
+  const hasInvalidAlphabet = draft.values.some(
+    (v) => v.skin.rules.includes('custom') && customAlphabetError(alphabetOf(v)),
+  );
 
-  const handleSave = () => {
-    onSave({ ...draft, ts: Date.now() });
-  };
-
-  const handleGenPw = () => {
-    setDraft((d) => ({ ...d, password: generatePassword(), kc: undefined }));
-  };
-
-  const isBuiltinSkin = BUILTIN_SKINS.some((s) => s.name === draft.skin.name);
-  const skinValue = isBuiltinSkin ? draft.skin.name : CUSTOM_SKIN_NAME;
-
-  const setRules = (next: RuleName[]) => {
+  const updateValue = (id: string, patch: Partial<EntryValue>) => {
     setDraft((d) => ({
       ...d,
-      skin: { name: CUSTOM_SKIN_NAME, rules: next },
-      kc: undefined,
+      values: d.values.map((v) => (v.id === id ? { ...v, ...patch } : v)),
     }));
+  };
+
+  const addValue = () => {
+    setDraft((d) => ({ ...d, values: [...d.values, createEmptyValue()] }));
+  };
+
+  const removeValue = (id: string) => {
+    setDraft((d) =>
+      d.values.length <= 1 ? d : { ...d, values: d.values.filter((v) => v.id !== id) },
+    );
+  };
+
+  const handleSave = () => {
+    if (hasInvalidAlphabet) return;
+    onSave({ ...draft, ts: Date.now() });
   };
 
   return (
@@ -102,28 +129,30 @@ export function EntryDrawer({ entry, categories, onSave, onDelete, onClose, open
           placeholder="user@example.com"
         />
 
-        <label style={{ fontSize: 'var(--fs-xs)', color: 'var(--dim)', fontWeight: 600 }}>密码</label>
-        <div style={{ display: 'flex', gap: 'var(--sp-sm)' }}>
-          <input
-            value={draft.password}
-            onChange={(e) =>
-              setDraft((d) => ({ ...d, password: e.target.value, kc: undefined }))
-            }
-            style={{ ...inputStyle, flex: 1 }}
-            placeholder="输入或生成密码"
-          />
-          <button onClick={handleGenPw} style={smallBtnStyle}>生成</button>
-          <button onClick={() => openKeycard(draft)} style={{ ...smallBtnStyle, background: 'var(--surface-2)', color: 'var(--accent)' }}>
-            钥匙卡
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+          <label style={{ fontSize: 'var(--fs-xs)', color: 'var(--dim)', fontWeight: 600 }}>
+            加密值（{draft.values.length}）
+          </label>
+          <button
+            onClick={addValue}
+            style={{ ...smallBtnStyle, background: 'var(--surface-2)', color: 'var(--accent)', padding: '4px 8px' }}
+          >
+            + 添加值
           </button>
         </div>
-        <StrengthMeter score={strength.score} label={strength.label} />
 
-        {draft.password && (
-          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--dim)', padding: '6px 8px', background: 'var(--surface-2)', borderRadius: 'var(--r-sm)', wordBreak: 'break-all', lineHeight: 1.6 }}>
-            {display || '保存后生成趣味显示（由密文编码，不含明文）'}
-          </div>
-        )}
+        {draft.values.map((v, i) => (
+          <ValueEditor
+            key={v.id}
+            value={v}
+            index={i}
+            masterPassword={masterPassword}
+            canRemove={draft.values.length > 1}
+            onChange={(patch) => updateValue(v.id, patch)}
+            onRemove={() => removeValue(v.id)}
+            onOpenKeycard={() => openKeycard(v, draft.name)}
+          />
+        ))}
 
         <label style={{ fontSize: 'var(--fs-xs)', color: 'var(--dim)', fontWeight: 600 }}>分类</label>
         <select
@@ -135,78 +164,6 @@ export function EntryDrawer({ entry, categories, onSave, onDelete, onClose, open
             <option key={c} value={c}>{c}</option>
           ))}
         </select>
-
-        <label style={{ fontSize: 'var(--fs-xs)', color: 'var(--dim)', fontWeight: 600 }}>皮肤</label>
-        <select
-          value={skinValue}
-          onChange={(e) => {
-            if (e.target.value === CUSTOM_SKIN_NAME) {
-              setDraft((d) => ({
-                ...d,
-                skin: { name: CUSTOM_SKIN_NAME, rules: normalizeRules(d.skin.rules) },
-                kc: undefined,
-              }));
-              return;
-            }
-            const skin = BUILTIN_SKINS.find((s) => s.name === e.target.value);
-            if (skin)
-              setDraft((d) => ({ ...d, skin: { name: skin.name, rules: skin.rules }, kc: undefined }));
-          }}
-          style={inputStyle}
-        >
-          {BUILTIN_SKINS.map((s) => (
-            <option key={s.name} value={s.name}>{s.name}</option>
-          ))}
-          <option value={CUSTOM_SKIN_NAME}>{CUSTOM_SKIN_NAME}（逐位设置）</option>
-        </select>
-
-        {draft.skin.name === CUSTOM_SKIN_NAME && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--dim)' }}>
-              趣味显示的每一位独立设置；显示长度超过设定时按顺序循环。
-            </div>
-            {draft.skin.rules.map((rule, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-sm)' }}>
-                <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--dim)', width: 48, flexShrink: 0 }}>
-                  第 {i + 1} 位
-                </span>
-                <select
-                  value={rule}
-                  onChange={(e) => {
-                    const next = [...draft.skin.rules];
-                    next[i] = e.target.value as RuleName;
-                    setRules(next);
-                  }}
-                  style={{ ...inputStyle, flex: 1, padding: '6px 8px' }}
-                >
-                  {(Object.keys(RULE_LABELS) as RuleName[]).map((r) => (
-                    <option key={r} value={r}>{RULE_LABELS[r]}</option>
-                  ))}
-                </select>
-                <button
-                  onClick={() => setRules(draft.skin.rules.filter((_, j) => j !== i))}
-                  disabled={draft.skin.rules.length <= 1}
-                  style={{
-                    ...smallBtnStyle,
-                    background: 'var(--surface-2)',
-                    color: draft.skin.rules.length <= 1 ? 'var(--mute)' : 'var(--bad)',
-                    flexShrink: 0,
-                  }}
-                >
-                  删除
-                </button>
-              </div>
-            ))}
-            <button
-              onClick={() =>
-                setRules([...draft.skin.rules, draft.skin.rules[draft.skin.rules.length - 1] ?? 'letter'])
-              }
-              style={{ ...smallBtnStyle, background: 'var(--surface-2)', color: 'var(--accent)', alignSelf: 'flex-start' }}
-            >
-              + 添加一位
-            </button>
-          </div>
-        )}
 
         <label style={{ fontSize: 'var(--fs-xs)', color: 'var(--dim)', fontWeight: 600 }}>备注</label>
         <textarea
@@ -237,7 +194,18 @@ export function EntryDrawer({ entry, categories, onSave, onDelete, onClose, open
         )}
         <div style={{ flex: 1 }} />
         <button onClick={onClose} style={{ ...smallBtnStyle, background: 'var(--surface)', color: 'var(--dim)' }}>取消</button>
-        <button onClick={handleSave} style={{ ...smallBtnStyle, background: 'var(--accent)', color: '#fff' }}>保存</button>
+        <button
+          onClick={handleSave}
+          disabled={hasInvalidAlphabet}
+          style={{
+            ...smallBtnStyle,
+            background: hasInvalidAlphabet ? 'var(--line-2)' : 'var(--accent)',
+            color: '#fff',
+            cursor: hasInvalidAlphabet ? 'not-allowed' : 'pointer',
+          }}
+        >
+          保存
+        </button>
       </div>
     </div>
   );

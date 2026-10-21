@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import type { Entry } from '../types';
+import type { Entry, EntryValue } from '../types';
 import { useVaultStore } from '../state/vaultStore';
 import { useSession } from '../state/session';
 import { createEntryKeycard } from '../crypto/keycard';
@@ -23,7 +23,7 @@ export function Vault() {
   const [isNewEntry, setIsNewEntry] = useState(false);
   const [newCatOpen, setNewCatOpen] = useState(false);
   const [newCatName, setNewCatName] = useState('');
-  const [keycardEntry, setKeycardEntry] = useState<Entry | null>(null);
+  const [keycardTarget, setKeycardTarget] = useState<{ name: string; value: EntryValue } | null>(null);
   const [saving, setSaving] = useState(false);
 
   const filtered = useMemo(() => {
@@ -63,11 +63,26 @@ export function Vault() {
       setSaving(true);
       try {
         const next: Entry = { ...entry, ts: Date.now() };
-        if (entry.password && masterPassword) {
-          // 趣味显示串由**密文**生成，绝不编码明文
-          next.kc = await createEntryKeycard(masterPassword, entry.password, entry.skin.rules);
+        if (masterPassword) {
+          // 每个加密值独立生成钥匙卡；趣味显示串由**密文**生成，绝不编码明文
+          next.values = await Promise.all(
+            entry.values.map(async (v) => {
+              if (!v.value) return { ...v, kc: undefined };
+              return {
+                ...v,
+                kc:
+                  v.kc ??
+                  (await createEntryKeycard(
+                    masterPassword,
+                    v.value,
+                    v.skin.rules,
+                    v.skin.custom,
+                  )),
+              };
+            }),
+          );
         } else {
-          delete next.kc;
+          next.values = entry.values.map((v) => ({ ...v, kc: undefined }));
         }
 
         if (isNewEntry) {
@@ -97,9 +112,9 @@ export function Vault() {
     [deleteEntry, toast],
   );
 
-  const handleOpenKeycard = useCallback((entry: Entry) => {
-    setEditingEntry(null);
-    setKeycardEntry(entry);
+  const handleOpenKeycard = useCallback((value: EntryValue, name: string) => {
+    // 保留编辑抽屉，避免打开钥匙卡时丢失未保存的改动
+    setKeycardTarget({ name, value });
   }, []);
 
   return (
@@ -155,6 +170,7 @@ export function Vault() {
           <EntryDrawer
             entry={editingEntry}
             categories={categories}
+            masterPassword={masterPassword}
             onSave={handleSave}
             onDelete={handleDelete}
             onClose={() => {
@@ -166,11 +182,12 @@ export function Vault() {
         </>
       )}
 
-      {keycardEntry && masterPassword && (
+      {keycardTarget && masterPassword && (
         <CipherKeycard
-          entry={keycardEntry}
+          entryName={keycardTarget.name}
+          value={keycardTarget.value}
           masterPassword={masterPassword}
-          onClose={() => setKeycardEntry(null)}
+          onClose={() => setKeycardTarget(null)}
         />
       )}
 

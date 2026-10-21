@@ -1,12 +1,10 @@
-import type { EntryKeycard } from '../types';
+import type { EntryKeycard, SkinRuleName } from '../types';
 import { bytesToHex } from '../lib/hex';
 import { randomSalt16 } from './kdf';
 import { keycardEncrypt } from './stream';
 import { encodeToken } from './skin';
 
 export const KEYCARD_ITERS = 200_000;
-
-type RuleName = 'letter' | 'number' | 'poem';
 
 /**
  * 生成条目的钥匙卡载荷。
@@ -15,7 +13,8 @@ type RuleName = 'letter' | 'number' | 'poem';
 export async function createEntryKeycard(
   masterPassword: string,
   entryPassword: string,
-  rules: RuleName[],
+  rules: SkinRuleName[],
+  customAlphabet?: string[],
 ): Promise<EntryKeycard> {
   const salt = randomSalt16();
   const iv = new Uint8Array(16);
@@ -30,6 +29,6 @@ export async function createEntryKeycard(
     ctHex,
     tagHex: bytesToHex(tag),
     iters: KEYCARD_ITERS,
-    display: encodeToken(ctHex, rules),
+    display: encodeToken(ctHex, rules, customAlphabet),
   };
 }

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Entry, EntryKeycard } from '../types';
+import type { EntryKeycard, EntryValue } from '../types';
 import { createEntryKeycard } from '../crypto/keycard';
 import type { KeycardPayload } from '../crypto/stream';
 import { buildKeycardHtml } from '../keycard/buildHtml';
@@ -7,38 +7,47 @@ import { buildKeycardPy } from '../keycard/buildPy';
 import { Modal } from './Modal';
 
 interface CipherKeycardProps {
-  entry: Entry;
+  entryName: string;
+  value: EntryValue;
   masterPassword: string;
   onClose: () => void;
 }
 
-export function CipherKeycard({ entry, masterPassword, onClose }: CipherKeycardProps) {
+export function CipherKeycard({ entryName, value, masterPassword, onClose }: CipherKeycardProps) {
   const [status, setStatus] = useState<'ready' | 'generating' | 'done'>('ready');
   const [error, setError] = useState('');
-  const [kc, setKc] = useState<EntryKeycard | null>(entry.kc ?? null);
+  const [kc, setKc] = useState<EntryKeycard | null>(value.kc ?? null);
 
   const display = kc?.display ?? '';
+  const valueLabel = value.label || '密码';
 
   const generate = async () => {
-    if (!entry.password) {
-      setError('请先填写密码再生成钥匙卡');
+    if (!value.value) {
+      setError(`请先填写「${valueLabel}」再生成钥匙卡`);
       return;
     }
     setStatus('generating');
     setError('');
     try {
       const payloadKc =
-        kc ?? (await createEntryKeycard(masterPassword, entry.password, entry.skin.rules));
+        kc ??
+        (await createEntryKeycard(
+          masterPassword,
+          value.value,
+          value.skin.rules,
+          value.skin.custom,
+        ));
       setKc(payloadKc);
 
       const payload: KeycardPayload = {
         ...payloadKc,
-        skinName: entry.skin.name,
-        rules: entry.skin.rules,
-        entryName: entry.name,
+        skinName: value.skin.name,
+        rules: value.skin.rules,
+        custom: value.skin.custom,
+        entryName: `${entryName} · ${valueLabel}`,
       };
 
-      const name = entry.name || 'entry';
+      const name = `${entryName || 'entry'}_${valueLabel}`;
       const html = buildKeycardHtml(payload, name, payloadKc.display);
       const py = buildKeycardPy(payload, name, payloadKc.display);
 
@@ -53,9 +62,9 @@ export function CipherKeycard({ entry, masterPassword, onClose }: CipherKeycardP
   };
 
   return (
-    <Modal open onClose={onClose} title="🔐 钥匙卡">
+    <Modal open onClose={onClose} title={`🔐 钥匙卡 · ${valueLabel}`}>
       <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--dim)', margin: '0 0 var(--sp-lg)' }}>
-        把条目密码用主密码加密后，生成可离线运行的 HTML 与 Python 文件。趣味显示由密文编码，不含明文。
+        把「{valueLabel}」用主密码加密后，生成可离线运行的 HTML 与 Python 文件。趣味显示由密文编码，不含明文。
       </p>
 
       <div
@@ -82,7 +91,8 @@ export function CipherKeycard({ entry, masterPassword, onClose }: CipherKeycardP
 
       {status === 'done' && (
         <p style={{ color: 'var(--good)', fontSize: 'var(--fs-sm)', marginBottom: 'var(--sp)' }}>
-          ✅ 已下载 keycard_{entry.name || 'entry'}.html 与 ciphervault_keycard_{entry.name || 'entry'}.py
+          ✅ 已下载 keycard_{safeName(`${entryName || 'entry'}_${valueLabel}`)}.html 与
+          ciphervault_keycard_{safeName(`${entryName || 'entry'}_${valueLabel}`)}.py
         </p>
       )}
 

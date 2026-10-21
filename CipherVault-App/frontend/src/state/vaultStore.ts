@@ -1,6 +1,45 @@
 import { create } from 'zustand';
-import type { Entry, VaultDoc } from '../types';
+import type { Entry, EntryKeycard, EntrySkin, EntryValue, VaultDoc } from '../types';
 import { newId } from '../lib/id';
+
+const DEFAULT_SKIN: EntrySkin = { name: '字母皮肤', rules: ['letter'] };
+
+type LegacyEntry = Entry & { password?: string; skin?: EntrySkin; kc?: EntryKeycard };
+
+/** 兼容旧版单密码条目：自动转换为 values[0] */
+function normalizeEntry(raw: LegacyEntry): Entry {
+  let values: EntryValue[];
+  if (Array.isArray(raw.values) && raw.values.length > 0) {
+    values = raw.values.map((v) => ({
+      ...v,
+      id: v.id || newId(),
+      label: v.label || '值',
+      skin: v.skin ?? DEFAULT_SKIN,
+    }));
+  } else if (raw.password) {
+    values = [
+      {
+        id: newId(),
+        label: '密码',
+        value: raw.password,
+        skin: raw.skin ?? DEFAULT_SKIN,
+        kc: raw.kc,
+      },
+    ];
+  } else {
+    values = [];
+  }
+  return {
+    id: raw.id,
+    name: raw.name,
+    account: raw.account,
+    category: raw.category,
+    notes: raw.notes ?? '',
+    fav: !!raw.fav,
+    ts: raw.ts,
+    values,
+  };
+}
 
 interface VaultState {
   entries: Entry[];
@@ -32,7 +71,7 @@ export const useVaultStore = create<VaultState>((set, get) => ({
 
   loadDoc: (doc) =>
     set({
-      entries: doc.entries ?? [],
+      entries: (doc.entries ?? []).map((e) => normalizeEntry(e as LegacyEntry)),
       categories: doc.categories ?? ['通用'],
       settings: doc.settings ?? { ...defaultSettings },
     }),

@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { encodeToken, decodeToken, normalizeRules, SEP } from '../crypto/skin';
+import {
+  encodeToken,
+  decodeToken,
+  normalizeRules,
+  customAlphabetError,
+  DEFAULT_CUSTOM_ALPHABET,
+  SEP,
+} from '../crypto/skin';
 
 describe('encodeToken / decodeToken', () => {
   it('letter skin roundtrip', () => {
@@ -62,5 +69,31 @@ describe('encodeToken / decodeToken', () => {
     expect(normalizeRules([])).toEqual(['letter']);
     expect(normalizeRules(['poem', 'bad'])).toEqual(['poem']);
     expect(normalizeRules('poem')).toEqual(['letter']);
+  });
+
+  it('typed custom alphabet roundtrip', () => {
+    const ctHex = '0123456789abcdef';
+    const custom = [...DEFAULT_CUSTOM_ALPHABET];
+    const display = encodeToken(ctHex, ['custom'], custom);
+    const segs = display.split(SEP);
+    expect(segs[0]).toBe(custom[0]);
+    expect(segs[15]).toBe(custom[15]);
+    expect(decodeToken(display, ['custom'], custom)).toBe(ctHex);
+  });
+
+  it('custom alphabet supports multi-character text per value', () => {
+    const ctHex = '0f';
+    const custom = Array.from({ length: 16 }, (_, i) => `第${i}号`);
+    const display = encodeToken(ctHex, ['custom'], custom);
+    expect(display).toBe(`第0号${SEP}第15号`);
+    expect(decodeToken(display, ['custom'], custom)).toBe(ctHex);
+  });
+
+  it('customAlphabetError rejects empty, duplicate and separator', () => {
+    const valid = [...DEFAULT_CUSTOM_ALPHABET];
+    expect(customAlphabetError(valid)).toBeNull();
+    expect(customAlphabetError([...valid.slice(0, 15), ''])).toContain('填写');
+    expect(customAlphabetError([...valid.slice(0, 15), valid[0]])).toContain('重复');
+    expect(customAlphabetError([...valid.slice(0, 15), `甲${SEP}乙`])).toContain('分隔符');
   });
 });

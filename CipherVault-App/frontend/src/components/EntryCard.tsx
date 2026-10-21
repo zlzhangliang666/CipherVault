@@ -35,6 +35,7 @@ export function EntryCard({ entry, onClick }: EntryCardProps) {
         </div>
         <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--mute)' }}>
           {entry.account} · {entry.category}
+          {entry.values.length > 0 && ` · ${entry.values.length} 项加密值`}
         </div>
       </div>
       <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--mute)', whiteSpace: 'nowrap' }}>{date}</span>

@@ -10,7 +10,9 @@ export interface KeycardPayload {
   display: string;
   skinName: string;
   /** 趣味显示的逐位规则，供导出的脚本还原显示串 */
-  rules?: Array<'letter' | 'number' | 'poem'>;
+  rules?: Array<'letter' | 'number' | 'poem' | 'custom'>;
+  /** 自定义文字表（0–F），rules 含 custom 时使用 */
+  custom?: string[];
   entryName?: string;
 }
 

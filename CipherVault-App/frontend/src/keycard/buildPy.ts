@@ -36,6 +36,7 @@ PAYLOAD = ${p}
 POEMS = ${poems}
 SEP = "\\u00b7"
 RULES = PAYLOAD.get("rules") or ["letter"]
+CUSTOM = PAYLOAD.get("custom") or []
 
 
 def decode_display(display, rules=None):
@@ -48,6 +49,8 @@ def decode_display(display, rules=None):
             v = ord(seg[0]) - 65
         elif r == "number":
             v = int(seg) - 10
+        elif r == "custom":
+            v = CUSTOM.index(seg) if seg in CUSTOM else -1
         else:
             v = POEMS.index(seg) if seg in POEMS else -1
         if v < 0 or v > 15:
